@@ -1,0 +1,52 @@
+# unseen 记忆相框
+
+把家人的照片、原声和故事送到长辈身边。手机端负责记录与管理，平板端专注看照片、听原声、说一说；AI 帮助聊天和整理回忆，发送内容仍由用户确认。
+
+这是比赛展示用的独立源码仓库，只包含记忆相框主流程。仓库没有预置线上账号、真实家庭内容、云密钥或原服务访问地址，也不包含完整 UNSEEN 产品与开发仓库历史。
+
+## 主要流程
+
+1. 家人在 `/family` 注册并创建家庭，邀请另一位家人加入。
+2. 通过底部中央 `＋` 发送照片、文字或原声；首页、`＋`、我的顺序固定。
+3. 老人平板在 `/frame` 使用相框邀请配对，查看家庭照片，听原声、录音回复。
+4. 开启已配置的 AI 后，可以围绕当前照片聊天，或整理录音。留言和联系建议先展示确认卡片；站内联系提醒不等于电话。
+5. 可选 Windows Link 2 传感器把驻足事件发给 API。服务端把事件绑定到目标家庭、短期保留并去重，相框端在合适时机展示邀请；老人确认后才进入当前照片的 AI 对话。
+
+![相框主动邀请界面](docs/images/presence-invitation.png)
+
+界面截图来自隔离本地 HTTP 与 Chrome 测试，使用中性测试图形；不代表实体 Link 2 或真人语音已验收。
+
+## 本地启动
+
+需要 Node.js 20.19 或更新的受支持版本、pnpm。建议用 Node.js 24。根目录与 `server` 各有独立锁文件：
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --dir server install --frozen-lockfile
+node scripts/verify-release.mjs
+node server/server.js
+```
+
+打开 [家人端](http://127.0.0.1:8787/family) 和 [相框端](http://127.0.0.1:8787/frame)。首次启动后，本机开通码在 `.data/setup-code`，只在“创建家庭”时填写。账号自行注册，测试中的 `fixture*` 账号只存在于临时测试数据中，不能用于登录应用。数据目录 `.data` 不进 Git；一个目录只运行一个本地实例。
+
+无 AI 密钥时可以完成家庭、照片发送、相框配对和回执流程；AI 按钮会明确提示缺少配置。可上传 `server/public/assets/demo.png` 这张代码生成的中性演示图。仓库不附真实家庭照片、录音或 3D 模型。
+
+在非本机设备上录音需要 HTTPS。把应用部署到自己的 HTTPS 域名后再用手机和平板配对；手机上的 `127.0.0.1` 不会指向电脑。
+
+## 配置与部署
+
+[部署指南](docs/DEPLOYMENT.md) 说明 CloudBase 数据库、存储、函数和密钥配置；[环境变量示例](.env.example) 只含空值与通用占位符。不会部署到原项目环境。`cloudbaserc.example.json` 必须改成自己的环境和角色后才能使用。
+
+实时语音默认关闭。需要该能力时先执行 `node scripts/prepare-trtc.mjs`，再按部署指南配置并验收服务。该脚本从官方 npm 获取固定版本并检查完整性；SDK 二进制不会被此仓库再次分发。普通文字/照片对话不需要 TRTC。
+
+## 验证
+
+```sh
+node --test test/*.test.js
+```
+
+默认测试使用隔离临时数据、网络或音频替身，不会创建云家庭或调用付费模型。安装了 `server` 依赖后应执行 CloudBase SDK 的序列化测试；没有浏览器环境时浏览器项会明确显示 `SKIP`。如需执行浏览器项，安装 Playwright 并设置 `AI_UX_PLAYWRIGHT` 为 Playwright 模块绝对路径、`AI_UX_CHROME` 为 Chrome 可执行文件绝对路径后重新运行。测试输出中的通过/跳过数量是本次运行的事实，不预写历史数量。
+
+[架构与数据边界](docs/ARCHITECTURE.md) · [驻足上报协议](docs/PRESENCE-CLOUD-API.md) · [能力与验收边界](docs/CAPABILITIES.md) · [第三方与素材说明](THIRD-PARTY-NOTICES.md)
+
+`SANITIZATION-REPORT.json` 记录文件范围和敏感模式检查结果；`SHA256SUMS` 记录初始发布文件摘要。校验清单不是数字签名。公开可见不自动为原创代码授予开源许可，第三方组件按各自许可证使用。
