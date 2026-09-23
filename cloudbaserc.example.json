@@ -1,0 +1,26 @@
+{
+  "envId": "YOUR_CLOUDBASE_ENV_ID",
+  "region": "ap-shanghai",
+  "functionRoot": ".",
+  "functions": [{
+    "name": "unseen-memory-frame",
+    "dir": "./server",
+    "type": "HTTP",
+    "runtime": "Nodejs20.19",
+    "entry": "server.js",
+    "timeout": 150,
+    "memorySize": 512,
+    "installDependency": true,
+    "isWaitInstall": true,
+    "public": true,
+    "gatewayPath": "/",
+    "ignore": ["node_modules/**", "pnpm-lock.yaml", "pnpm-workspace.yaml"],
+    "role": "YOUR_FUNCTION_EXECUTION_ROLE",
+    "envVariables": {
+      "MEMORY_CLOUDBASE_ENV": "YOUR_CLOUDBASE_ENV_ID",
+      "DEMO_SETUP_CODE": "REPLACE_WITH_PRIVATE_RANDOM_SETUP_CODE",
+      "PORT": "9000",
+      "AI_REALTIME_ENABLED": "0"
+    }
+  }]
+}

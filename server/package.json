@@ -1,0 +1,13 @@
+{
+  "name": "memory-frame-demo-api",
+  "version": "0.1.0",
+  "private": true,
+  "main": "server.js",
+  "dependencies": {
+    "@cloudbase/node-sdk": "^3.18.3",
+    "qrcode": "^1.5.4",
+    "tencentcloud-sdk-nodejs-asr": "^4.0.0",
+    "tencentcloud-sdk-nodejs-trtc": "4.1.315",
+    "tls-sig-api-v2": "1.0.2"
+  }
+}

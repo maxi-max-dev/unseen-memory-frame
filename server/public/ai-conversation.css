@@ -1,0 +1,34 @@
+.ai-dialog { width: min(640px, calc(100vw - 24px)); max-height: 90dvh; overflow: auto; padding: 22px; }
+.ai-dialog h2 { margin: 0; }
+.ai-dialog-heading { position: sticky; top: -22px; z-index: 1; background: var(--paper); padding-block: 10px; }
+.ai-dialog-heading button { flex-shrink: 0; }
+.ai-photo-picker { margin-block: 14px; }
+.ai-photo-picker summary { cursor: pointer; min-height: 44px; padding-block: 9px; }
+.ai-dialog summary:focus-visible { outline: 3px solid #9673c9; outline-offset: 3px; border-radius: 6px; }
+.ai-home-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #edf4ff; border: 1px solid #c5d7ef; border-radius: 20px; padding: 18px; margin: -6px 0 22px; }
+.ai-home-entry strong { font-size: 19px; }
+.ai-home-entry p { margin: 7px 0 0; color: #625e7a; font-size: 14px; }
+.ai-home-entry .row { flex-wrap: wrap; }
+.ai-home-entry button { min-height: 48px; white-space: nowrap; }
+.ai-realtime-entry { display: block; width: 100%; margin-top: 16px; background: #e3edf9; text-align: left; }
+.ai-realtime-note { padding: 14px; border-radius: 14px; background: #edf4ff; }
+header > div { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+@media (max-width: 640px) { .ai-home-entry { flex-direction: column; align-items: stretch; } .ai-home-entry .row > button { flex: 1; } }
+.ai-dialog label { display: block; margin: 12px 0; }
+.ai-dialog select, .ai-dialog textarea { display: block; width: 100%; box-sizing: border-box; font: inherit; }
+.ai-dialog select { min-height: 44px; }
+.ai-dialog .ai-photo-choice { display: flex; gap: 8px; align-items: center; }
+.ai-dialog .ai-photo-choice input { width: 20px; height: 20px; }
+.ai-dialog .row { flex-wrap: wrap; }
+.ai-dialog button, #openAI { min-height: 44px; }
+.ai-messages { max-height: 32dvh; overflow-y: auto; overscroll-behavior: contain; }
+.ai-messages p { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px; border: 1px solid #ddd; border-radius: 12px; }
+.ai-dialog #aiStatus { min-height: 1.5em; }
+.ai-photos > div { display: flex; align-items: center; gap: 10px; margin-block: 8px; }
+.ai-photos img { width: 60px; height: 60px; object-fit: cover; border-radius: 8px; }
+.ai-photos span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ai-photos img, .ai-photos button { flex-shrink: 0; }
+.ai-dialog audio { max-width: 100%; }
+.ai-action-card { margin-top: 20px; padding: 16px; border: 2px solid #797397; border-radius: 14px; }
+.ai-action-card p { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .ai-dialog { padding: 14px; } .ai-dialog-heading { top: -14px; } #openAI { font-size: 13px; padding-inline: 8px; } }

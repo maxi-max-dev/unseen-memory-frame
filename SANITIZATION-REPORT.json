@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "passed": true,
+  "scannedFiles": 166,
+  "rules": [
+    "deployment-environment",
+    "historical-login",
+    "private-filesystem-path",
+    "private-key",
+    "provider-key",
+    "bearer-jwt",
+    "signed-media-url",
+    "credential-url"
+  ],
+  "exclusions": [
+    "original Git history",
+    "historical delivery and account documents",
+    "runtime data and uploaded family media",
+    "local cloud settings and environment files",
+    "private tooling and machine paths",
+    "original demo photographs",
+    "TRTC SDK binary"
+  ],
+  "transformations": [
+    {
+      "path": "scripts/portable-content.mjs",
+      "category": "deployment-environment",
+      "count": 1
+    },
+    {
+      "path": "scripts/portable-content.mjs",
+      "category": "deployment-origin",
+      "count": 1
+    },
+    {
+      "path": "test/accounts.test.js",
+      "category": "historical-login-fixture",
+      "count": 13
+    },
+    {
+      "path": "test/accounts.test.js",
+      "category": "historical-password-fixture",
+      "count": 3
+    },
+    {
+      "path": "test/accounts.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/family-state.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/message-history.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/spatial-import.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/spatial-range.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/spatial-ui.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    }
+  ],
+  "findings": [],
+  "limitation": "Pattern-based scan complements the explicit file allowlist and manual source review; it cannot prove the absence of every possible secret."
+}

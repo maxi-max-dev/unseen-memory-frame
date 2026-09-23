@@ -1,0 +1,14 @@
+.presence-invitation{width:min(680px,calc(100% - 32px));padding:38px;text-align:center;border:3px solid #c0ded0;background:#fffdf7;box-shadow:0 20px 70px #283c4666;overflow-wrap:anywhere}
+.presence-invitation::backdrop{background:#292b4059}
+.presence-invitation .presence-eyebrow{font-size:20px;color:#417158;margin:0 0 16px}
+.presence-invitation h2{font-size:clamp(28px,3.8vw,40px);line-height:1.4;margin:0 0 16px;color:#303641}
+.presence-invitation #presenceInvitationNote{font-size:23px;line-height:1.7;color:#5f5d68}
+.presence-invitation-actions{display:flex;gap:18px;flex-wrap:wrap;margin-top:28px}
+.presence-invitation-actions button{flex:1;min-width:190px;min-height:76px;font-size:26px;padding:16px;border:2px solid transparent}
+.presence-invitation-actions .primary{background:#397a58;color:#fff}
+.presence-invitation-actions button:focus-visible{outline:4px solid #315982;outline-offset:3px}
+.presence-settings{width:min(740px,calc(100% - 24px));overflow-wrap:anywhere}
+.presence-settings h2{font-size:25px}.presence-settings .sensor-row{padding:16px 0;border-bottom:1px solid #e4ddec}.presence-settings .sensor-row p{margin:5px 0}
+.presence-settings .sensor-secret{padding:16px;background:#fff3da;border:1px solid #d7bf88;border-radius:14px;margin:18px 0}
+.presence-settings .sensor-secret input{font-family:monospace;font-size:14px}.presence-settings label{display:block;margin:12px 0}.presence-settings input,.presence-settings select{width:100%;min-width:0}.presence-settings .row{flex-wrap:wrap}
+@media(max-width:600px){.presence-invitation{padding:28px 20px}.presence-invitation #presenceInvitationNote{font-size:21px}.presence-invitation-actions{gap:14px}.presence-invitation-actions button{min-width:100%;font-size:24px}.presence-settings{padding:22px 18px}}

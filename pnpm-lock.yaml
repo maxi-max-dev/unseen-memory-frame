@@ -1,0 +1,23 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@cloudbase/cli':
+        specifier: ^3.8.3
+        version: 3.8.3
+
+packages:
+
+  '@cloudbase/cli@3.8.3':
+    resolution: {integrity: sha512-lZEzqT97kZToU0+js1R6YC2JdNpqgN/P9VUKc1BzIYeAo7jmEDtwuZDL1GEyWXR3HYzy1r/RYztrKoow4m6m0g==}
+    hasBin: true
+
+snapshots:
+
+  '@cloudbase/cli@3.8.3': {}

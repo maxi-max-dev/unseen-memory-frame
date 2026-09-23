@@ -1,0 +1,10 @@
+node_modules/
+.tools/
+.data/
+.env
+.env.*
+!.env.example
+cloudbaserc.local.json
+*.local.*
+*.log
+server/public/vendor/trtc-5.19.2.mjs

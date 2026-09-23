@@ -1,0 +1,17 @@
+#familyContactDialog{width:min(600px,calc(100vw - 28px));max-height:85dvh;border:1px solid var(--line,#ded6c9);border-radius:20px;padding:24px;background:var(--paper,#fffdf8);color:var(--ink,#302c28);font:inherit;overflow:auto}
+#familyContactDialog::backdrop{background:#181c2299}
+#familyContactDialog button,#familyContactDialog select{font:inherit}
+#familyContactDialog .contact-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+#familyContactDialog h2{margin:0;font:inherit;font-size:1.5rem;font-weight:700}
+#familyContactDialog .contact-description{line-height:1.6;color:var(--muted,#70695f)}
+#familyContactDialog .contact-compose{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:20px 0}
+#familyContactDialog .contact-compose label{display:grid;gap:7px;flex:1;min-width:160px}
+#familyContactDialog select{width:100%;padding:10px;border:1px solid var(--line,#ded6c9);border-radius:10px;background:var(--paper,#fffdf8);color:inherit}
+#familyContactDialog .contact-record{padding:14px 0;border-top:1px solid var(--line,#ded6c9)}
+#familyContactDialog .contact-record p{margin:6px 0;line-height:1.6}
+#familyContactDialog .contact-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+#familyContactDialog .contact-status{min-height:1.5em;line-height:1.5}
+#familyContactDialog .contact-status[data-error="true"]{color:#a93226}
+#familyContactNotice{position:fixed;right:16px;bottom:calc(88px + env(safe-area-inset-bottom));z-index:90;max-width:calc(100vw - 32px);padding:13px 18px;border-radius:16px;background:var(--paper,#fffdf8);border:1px solid var(--line,#ded6c9);box-shadow:0 4px 20px #0002;color:var(--ink,#302c28);font:inherit}
+#familyContactNotice[hidden]{display:none}
+@media(max-width:480px){#familyContactDialog{padding:18px}#familyContactDialog .contact-compose>button{width:100%}}

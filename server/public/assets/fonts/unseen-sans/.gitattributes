@@ -1,0 +1,4 @@
+*.woff2 binary
+LICENSE.txt -text
+*.css text eol=lf
+*.json text eol=lf

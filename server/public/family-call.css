@@ -1,0 +1,10 @@
+.family-call-dialog { width: min(540px, calc(100vw - 24px)); max-height: 90dvh; overflow: auto; padding: 22px; font: inherit; }
+.family-call-dialog .call-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.family-call-dialog h2 { margin: 0; }
+.family-call-dialog .call-description, .family-call-dialog #callCapability { color: var(--text-secondary, #595b65); line-height: 1.6; }
+.family-call-dialog label { display: block; margin-block: 12px; }
+.family-call-dialog select { display: block; width: 100%; min-height: 44px; font: inherit; margin-top: 8px; }
+.family-call-dialog button, #familyCallNotice { min-height: 44px; font: inherit; }
+.family-call-dialog #callContent button { margin: 8px 8px 8px 0; }
+.family-call-dialog #callStatus { min-height: 3em; line-height: 1.6; }
+#familyCallNotice { position: fixed; bottom: 88px; inset-inline: 16px; z-index: 30; border: 2px solid #797397; border-radius: 14px; padding: 12px 16px; background: var(--bg-card, #fff); color: inherit; }
