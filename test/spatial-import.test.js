@@ -8,41 +8,13 @@ const crypto = require('node:crypto');
 const zlib = require('node:zlib');
 const { Readable, Writable } = require('node:stream');
 const { createApp } = require('../server/server');
-const { validateSog, crc32 } = require('../server/spatial-sog');
+const { LocalStore } = require('../server/store');
+const { validateSog } = require('../server/spatial-sog');
 const { SpatialError, shareURL, assetURL, publicAddress, resolvePublic, createNetwork, parsePage, parseCamera } = require('../server/spatial-network');
 const { uploadCloud, readCloud } = require('../server/spatial-storage');
-const SCENE = 'GS3DC58c4f791ace58141dc9720044e4e771f';
-const SHARE = 'https://app.insta360.com/3dspace/detail/' + SCENE;
-const ASSET = 'https://insta360-app-hz.oss-cn-hangzhou.aliyuncs.com/model.sog?Signature=must-never-persist';
+const { SCENE, SHARE, ASSET, webp, entries, zip, page } = require('./helpers/spatial-fixture');
 const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 const gate = () => { let release; const promise = new Promise(resolve => { release = resolve; }); return { promise, release }; };
-function webp(width = 1, height = 1) {
-  // Synthetic WebP header for container/metadata validation, not renderer acceptance.
-  const b = Buffer.alloc(26); b.write('RIFF'); b.writeUInt32LE(18, 4); b.write('WEBPVP8L', 8); b.writeUInt32LE(5, 16); b[20] = 0x2f; b.writeUInt32LE(((width - 1) | ((height - 1) << 14)) >>> 0, 21); return b;
-}
-function entries(metaChange = {}, texture = webp()) {
-  const meta = { version: 2, count: 1, means: { mins: [0,0,0], maxs: [1,1,1], files: ['means_l.webp','means_u.webp'] },
-    scales: { codebook: Array(256).fill(0), files: ['scales.webp'] }, quats: { files: ['quats.webp'] }, sh0: { codebook: Array(256).fill(0), files: ['sh0.webp'] }, ...metaChange };
-  return [['meta.json', Buffer.from(JSON.stringify(meta))], ...['means_l.webp','means_u.webp','scales.webp','quats.webp','sh0.webp'].map(name => [name, texture])];
-}
-function zip(items = entries(), { method = 0, descriptor = false } = {}) {
-  let position = 0; const local = [], central = [];
-  for (const [name, data] of items) {
-    const n = Buffer.from(name), encoded = method === 8 ? zlib.deflateRawSync(data) : data, crc = crc32(data), flags = descriptor ? 8 : 0;
-    const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50); h.writeUInt16LE(20, 4); h.writeUInt16LE(flags, 6); h.writeUInt16LE(method, 8); h.writeUInt16LE(n.length, 26);
-    if (!descriptor) { h.writeUInt32LE(crc, 14); h.writeUInt32LE(encoded.length, 18); h.writeUInt32LE(data.length, 22); }
-    const d = Buffer.alloc(descriptor ? 16 : 0);
-    if (descriptor) { d.writeUInt32LE(0x08074b50); d.writeUInt32LE(crc, 4); d.writeUInt32LE(encoded.length, 8); d.writeUInt32LE(data.length, 12); }
-    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt16LE(flags, 8); c.writeUInt16LE(method, 10);
-    c.writeUInt32LE(crc, 16); c.writeUInt32LE(encoded.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(position, 42);
-    local.push(h, n, encoded, d); central.push(c, n); position += h.length + n.length + encoded.length + d.length;
-  }
-  const directory = Buffer.concat(central), end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50); end.writeUInt16LE(items.length, 8); end.writeUInt16LE(items.length, 10); end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(position, 16);
-  return Buffer.concat([...local, directory, end]);
-}
-function page(scene = SCENE, overrides = {}) {
-  return '<script id="__NEXT_DATA__" type="application/json">' + JSON.stringify({ props: { pageProps: { taskDetail: { taskOrderNo: scene, isPrivate: 0, title: '测试空间', outputs: [{ type: 'model', fileFormat: 'sog', url: ASSET }], ...overrides } } } }) + '</script>';
-}
 function fakeRequest(replies, inspect = () => {}) {
   let index = 0;
   return (url, options, receive) => {
@@ -69,7 +41,7 @@ async function fixture(t, options = {}) {
   const network = { page: async url => page(shareURL(url).scene), download: async (_url, filename, _limit, signal) => {
     downloads++; await options.download?.(downloads, signal); signal.throwIfAborted(); await fs.writeFile(filename, model, { flag: 'wx' }); return { bytes: model.length, digest: hash(model) };
   } };
-  const app = await createApp({ dataDir: dir, setupCode: 'test', spatial: { ...options.spatial, network } });
+  const app = await createApp({ store: new LocalStore(dir), setupCode: 'test', spatial: { ...options.spatial, network } });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => app.server.close(resolve)));
   const base = 'http://127.0.0.1:' + app.server.address().port;
@@ -87,6 +59,7 @@ test('DNS rejects every private/reserved/mapped family and mixed public/private 
   for (const ip of ['127.0.0.1','0.0.0.0','10.1.1.1','100.64.0.1','169.254.169.254','172.16.1.1','192.168.0.1','198.18.0.1','224.1.1.1','::1','::ffff:8.8.8.8','fe80::1','fc00::1','2001:db8::1','2002:7f00:1::1']) assert.equal(publicAddress(ip), false, ip);
   for (const ip of ['8.8.8.8','1.1.1.1','2606:4700:4700::1111']) assert.equal(publicAddress(ip), true, ip);
   await assert.rejects(resolvePublic('example.com', async () => [{ address: '8.8.8.8', family: 4 }, { address: '127.0.0.1', family: 4 }]));
+  await assert.rejects(resolvePublic('example.com', async () => { throw new Error('DNS error with ' + ASSET); }), error => error.code === 'dns_failed' && !error.message.includes('Signature'));
 });
 test('every redirect repeats allowlist/DNS checks and transport is pinned to checked IP', async () => {
   let calls = 0, lookups = 0;
@@ -117,6 +90,15 @@ test('provider page binds the exact scene, public status and SOG output, with sa
   assert.deepEqual(parseCamera(JSON.stringify(camera)), { position: [1,2,3], forward: [0,0,1], up: [-0,-1,-0], fov: 75 });
   camera[0].rotation[0][0] = 100; assert.equal(parseCamera(JSON.stringify(camera)), undefined);
   assert.equal(parseCamera('{}'), undefined);
+});
+
+test('unsupported host, private share and missing model remain distinct without exposing signed resources', () => {
+  const cases = [
+    [{ isPrivate: 1 }, 'share_private'],
+    [{ outputs: [{ type: 'video', fileFormat: 'mp4', url: ASSET }, { type: 'model', fileFormat: 'zip', url: ASSET }] }, 'model_missing'],
+    [{ outputs: [{ type: 'model', fileFormat: 'sog', url: 'https://unverified.invalid/model.sog?Signature=secret' }] }, 'unsupported_asset_host']
+  ];
+  for (const [overrides, code] of cases) assert.throws(() => parsePage(page(SCENE, overrides), SCENE), error => error.code === code && !error.message.includes('Signature'));
 });
 test('SOG accepts bounded v2 stored/deflated archives including data descriptors', async t => {
   const dir = await temporary(t);
@@ -166,6 +148,7 @@ test('family-only imports, room isolation, private reads, expired/tampered/revok
 test('failed imports are sanitized and retryable; original link and unrelated text remain intact', async t => {
   const f = await fixture(t, { download: async calls => { if (calls === 1) throw new Error('failed at ' + ASSET); } });
   const failed = await f.api('spatialImport', { id: f.id }, f.owner.token); assert.equal(failed.spatial.status, 'failed'); assert.equal(failed.spatial.error.includes('Signature'), false);
+  assert.equal(failed.spatial.failureStage, 'downloading'); assert.equal(failed.spatial.errorCode, 'import_failed');
   assert.equal((await f.store.get(f.id)).link, SHARE + '?showTitle=0');
   await f.api('edit', { id: f.id, text: '家人补充', title: '空间' }, f.owner.token);
   assert.equal((await f.api('spatialImport', { id: f.id }, f.owner.token)).spatial.status, 'ready'); assert.equal((await f.store.get(f.id)).editedText, '家人补充');
@@ -173,7 +156,7 @@ test('failed imports are sanitized and retryable; original link and unrelated te
 test('durable expired lease is visible as failed and recovered after local store reload', async t => {
   const f = await fixture(t); const roomKey = 'sp_' + f.owner.room;
   await f.store.put({ _id: roomKey, kind: 'spatial', room: f.owner.room, secret: 'secret', entries: { [SCENE]: { sourceURL: SHARE, status: 'importing', stage: 'downloading', progress: 15, lease: 'dead-worker', leaseUntil: 1, updatedAt: 1 } } });
-  const restart = await createApp({ dataDir: f.dir, setupCode: 'test', spatial: { network: f.network } });
+  const restart = await createApp({ store: new LocalStore(f.dir), setupCode: 'test', spatial: { network: f.network } });
   const state = await restart.api('state', {}, f.owner.token); assert.equal(state.messages[0].spatial.status, 'failed'); assert.equal(state.messages[0].spatial.stage, 'expired');
   assert.equal((await restart.api('spatialImport', { id: f.id }, f.owner.token)).spatial.status, 'ready'); assert.equal(f.count(), 1);
 });
@@ -198,13 +181,17 @@ test('atomic family quota includes reservations during concurrent imports', asyn
   await assert.rejects(f.api('spatialImport', { id: other.id }, f.owner.token), { status: 409 });
 });
 test('deadline aborts request-bound work and failure clears reservation for retry', { timeout: 10000 }, async t => {
-  const f = await fixture(t, { spatial: { budgetMs: 30 }, download: async (calls, signal) => { if (calls === 1) await new Promise((_, reject) => {
+  let stall = true;
+  const f = await fixture(t, { spatial: { budgetMs: 30 }, download: async (_calls, signal) => { if (stall) await new Promise((_, reject) => {
     // File I/O before download may consume the deadline; abort is not replayed
     // for listeners attached after it has already fired.
     signal.throwIfAborted();
     signal.addEventListener('abort', () => reject(signal.reason), { once: true });
   }); } });
   const result = await f.api('spatialImport', { id: f.id }, f.owner.token); assert.equal(result.spatial.status, 'failed'); assert.match(result.spatial.error, /超时/);
+  // Under parallel browser load the first attempt can expire before download.
+  // Release the fault by attempt, not by the number of downloads reached.
+  stall = false;
   const next = await createApp({ store: f.store, setupCode: 'test', spatial: { network: f.network } });
   assert.equal((await next.api('spatialImport', { id: f.id }, f.owner.token)).spatial.status, 'ready');
 });

@@ -6,11 +6,11 @@ const fs = require('node:fs');
 const { Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const crypto = require('node:crypto');
+const { parseShare } = require('./public/spatial-link');
 
-const SHARE_HOST = 'app.insta360.com';
 const ASSET_HOSTS = new Set(['insta360-app-hz.oss-cn-hangzhou.aliyuncs.com']);
-class SpatialError extends Error { constructor(message, status = 400) { super(message); this.status = status; } }
-const reject = message => { throw new SpatialError(message); };
+class SpatialError extends Error { constructor(message, status = 400, code = '') { super(message); this.status = status; this.code = code; } }
+const reject = (message, code) => { throw new SpatialError(message, 400, code); };
 function checkedURL(input) {
   if (typeof input !== 'string' || input.length > 8192 || /[\s\\]/.test(input)) reject('空间链接格式不正确');
   let url; try { url = new URL(input); } catch { reject('空间链接格式不正确'); }
@@ -18,14 +18,14 @@ function checkedURL(input) {
   return url;
 }
 function shareURL(input) {
-  const url = checkedURL(input);
-  const match = /^\/3dspace\/detail\/(GS3DC[0-9a-fA-F]{32})\/?$/.exec(url.pathname);
-  if (url.hostname !== SHARE_HOST || !match) reject('目前仅支持影石 3D 空间分享链接');
-  return { url: `https://${SHARE_HOST}/3dspace/detail/${match[1]}`, scene: match[1] };
+  const share = parseShare(input);
+  if (!share) reject('请使用影石时光舱作品的网页分享链接（不是视频或模型文件地址）', 'unsupported_link');
+  return share;
 }
 function assetURL(input, extension = 'sog') {
   const url = checkedURL(input);
-  if (!['sog', 'json'].includes(extension) || !ASSET_HOSTS.has(url.hostname) || !url.pathname.toLowerCase().endsWith('.' + extension)) reject('影石模型资源地址不受支持');
+  if (!ASSET_HOSTS.has(url.hostname)) reject('作品使用了尚未支持的资源域名，请保留作品分享链接以便核实；可先查看影石来源', 'unsupported_asset_host');
+  if (!['sog', 'json'].includes(extension) || !url.pathname.toLowerCase().endsWith('.' + extension)) reject('作品的模型资源格式不受支持，请确认来源中有可观看的空间', 'unsupported_asset_format');
   return url;
 }
 const blocked = new net.BlockList();
@@ -40,13 +40,18 @@ async function resolvePublic(hostname, lookup = dns.lookup, signal) {
   signal?.throwIfAborted();
   let timer, abort;
   const timeout = new Promise((_, rejectPromise) => {
-    timer = setTimeout(() => rejectPromise(new SpatialError('模型地址解析超时，请重试')), 8000);
+    timer = setTimeout(() => rejectPromise(new SpatialError('模型地址解析超时，请重试', 400, 'dns_timeout')), 8000);
     abort = () => rejectPromise(signal.reason); signal?.addEventListener('abort', abort, { once: true });
   });
   let addresses;
   try { addresses = await Promise.race([lookup(hostname, { all: true, verbatim: true }), timeout]); }
+  catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof SpatialError) throw error;
+    reject('资源域名解析失败，请稍后重试；也可先打开影石来源检查作品是否可访问', 'dns_failed');
+  }
   finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
-  if (!Array.isArray(addresses) || !addresses.length || addresses.some(x => !publicAddress(x.address))) reject('模型资源地址未通过安全检查');
+  if (!Array.isArray(addresses) || !addresses.length || addresses.some(x => !publicAddress(x.address))) reject('模型资源地址未通过安全检查，请保留作品分享链接以便核实', 'unsafe_dns');
   return addresses.find(x => x.family === 4) || addresses[0];
 }
 function pinnedLookup(selected) {
@@ -71,10 +76,15 @@ function createNetwork({ lookup, request } = {}) {
       const response = await requestResponse(parsed, { signal, selected, request });
       if ([301,302,303,307,308].includes(response.statusCode)) {
         const location = response.headers.location; response.destroy();
-        if (!location || hop === 3) reject('模型地址跳转过多或无效');
-        url = new URL(location, parsed).href; continue;
+        if (!location || hop === 3) reject('模型地址跳转过多或无效，请重新复制作品网页链接', 'redirect_invalid');
+        try { url = new URL(location, parsed).href; }
+        catch { reject('模型地址跳转无效，请重新复制作品网页链接', 'redirect_invalid'); }
+        continue;
       }
-      if (response.statusCode !== 200) { response.destroy(); reject('影石分享不可用或模型下载失败，请检查来源链接'); }
+      if (response.statusCode !== 200) {
+        response.destroy();
+        reject(kind === 'share' ? '影石作品暂不可访问，请打开来源确认作品已生成且允许网页分享，再重试' : '影石模型暂不可下载或地址已过期，请重试以重新获取作品资源', kind === 'share' ? 'share_unavailable' : 'asset_unavailable');
+      }
       const encoding = response.headers['content-encoding'];
       if (encoding && encoding !== 'identity') { response.destroy(); reject('模型下载压缩方式不受支持'); }
       return response;
@@ -107,10 +117,12 @@ function createNetwork({ lookup, request } = {}) {
 }
 function parsePage(html, scene) {
   const match = /<script\b[^>]*\bid\s*=\s*["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script\s*>/i.exec(html);
-  let detail; try { detail = JSON.parse(match?.[1]).props.pageProps.taskDetail; } catch { reject('影石分享页面已变化或不可用，请打开来源链接'); }
-  if (!detail || detail.taskOrderNo !== scene || detail.isPrivate !== 0 || !Array.isArray(detail.outputs)) reject('影石分享不可用或场景信息不匹配');
+  let detail; try { detail = JSON.parse(match?.[1]).props.pageProps.taskDetail; } catch { reject('影石分享页面已变化或不可用，请打开来源链接', 'share_page_changed'); }
+  if (!detail || detail.taskOrderNo !== scene) reject('影石分享不可用或场景信息不匹配，请重新复制作品的网页分享链接', 'scene_mismatch');
+  if (detail.isPrivate !== 0) reject('作品未开放网页分享，请在影石中检查分享权限后重试', 'share_private');
+  if (!Array.isArray(detail.outputs)) reject('作品尚无可用模型，请等待影石生成完成后重试', 'model_missing');
   const models = detail.outputs.filter(x => x?.type === 'model' && x.fileFormat === 'sog');
-  if (models.length !== 1) reject('分享中没有可用的 SOG 空间模型');
+  if (models.length !== 1) reject('分享中没有唯一可用的 SOG 空间模型；视频和其他 ZIP 不能代替，请确认作品已生成完成', 'model_missing');
   const url = assetURL(models[0].url).href;
   const title = typeof detail.title === 'string' ? detail.title.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 120) : 'Insta360 空间';
   const cameras = detail.outputs.filter(x => x?.type === 'model' && x.fileFormat === 'json');

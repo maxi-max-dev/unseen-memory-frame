@@ -8,12 +8,17 @@ const { randomUUID } = require('node:crypto');
 const { createApp } = require('../server/server');
 const { LocalStore } = require('../server/store');
 
-test('real HTTP and Chrome: owner binds sensor, target frame invites once and consent opens fixed photo', {
+test('real HTTP and Chrome: confirmed presence asks about fixed photo once and falls back safely', {
   skip: !process.env.AI_UX_PLAYWRIGHT || !process.env.AI_UX_CHROME
 }, async t => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'presence-http-browser-'));
+  const providerInputs = []; let providerFails = false;
   const app = await createApp({ store: new LocalStore(dir), setupCode: 'presence-local-only',
-    conversation: { capabilities: () => ({ text: true, vision: true, asr: false }) } });
+    conversation: { capabilities: () => ({ text: true, vision: true, asr: false }), complete: async input => {
+      providerInputs.push({ messageIds: input.messageIds, history: input.history, images: input.images.length });
+      if (providerFails) throw Error('AI fixture unavailable');
+      return { answer: input.history.length ? '谢谢您分享这段回忆。' : '这张照片让您想起了什么？', action: null };
+    } } });
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
   const origin = `http://127.0.0.1:${app.server.address().port}`;
   const { chromium } = require(process.env.AI_UX_PLAYWRIGHT);
@@ -39,6 +44,8 @@ test('real HTTP and Chrome: owner binds sensor, target frame invites once and co
     await context.addInitScript(({ session }) => {
       const key = 'memory-session-' + (session.role === 'frame' ? 'frame' : 'family');
       if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify(session));
+      window.microphoneRequests = 0;
+      navigator.mediaDevices.getUserMedia = async () => { window.microphoneRequests++; throw Error('No microphone in HTTP fixture'); };
     }, { session });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
@@ -85,6 +92,8 @@ test('real HTTP and Chrome: owner binds sensor, target frame invites once and co
 
   await api('presenceReport', makeEvent(), token);
   await framePage.locator('#presenceInvitation').waitFor({ state: 'visible', timeout: 7000 });
+  assert.equal(providerInputs.length, 0);
+  assert.match(await framePage.locator('#presenceInvitationNote').textContent(), /确认后.*读取/);
   const screenshots = process.env.AI_UX_SCREENSHOTS;
   if (screenshots) {
     await fs.mkdir(screenshots, { recursive: true });
@@ -101,16 +110,37 @@ test('real HTTP and Chrome: owner binds sensor, target frame invites once and co
   await api('send', { id: 'third', image: image.id, text: '后来寄来的照片', title: '后来寄来的照片' }, owner.token);
   await framePage.evaluate(() => poll()); assert.match(await framePage.locator('#caption').textContent(), /后来寄来/);
   await framePage.locator('#presenceAccept').click(); await framePage.locator('.ai-dialog').waitFor({ state: 'visible' });
+  await framePage.waitForFunction(() => document.querySelector('#aiMessages')?.textContent.includes('这张照片让您想起了什么？'));
+  assert.deepEqual(await framePage.locator('#aiMessages p').allTextContents(), ['AI：这张照片让您想起了什么？']);
   const second = (await api('state', {}, targetFrame.token)).messages.find(item => item.text === '一起看看今天的风景');
   assert.equal(await framePage.locator('#aiPhotos img').getAttribute('src'), second.imageURL);
   assert.match(await framePage.locator('#aiPhotos').textContent(), /一起看看今天的风景/);
   assert.doesNotMatch(await framePage.locator('#aiPhotos').textContent(), /后来寄来/);
+  assert.equal(await framePage.locator('#aiReadPhoto').isChecked(), true);
+  assert.equal(providerInputs.length, 1); assert.deepEqual(providerInputs[0].messageIds, [second._id]); assert.equal(providerInputs[0].images, 1);
+  assert.equal(actions.some(action => ['aiTranscribe', 'aiRealtimeStart'].includes(action)), false);
+  assert.equal(await framePage.evaluate(() => microphoneRequests), 0);
+  if (screenshots) for (const [width, height] of [[1180, 820], [820, 1180]]) {
+    await framePage.setViewportSize({ width, height });
+    assert.equal(await framePage.locator('.ai-dialog').evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
+    await framePage.screenshot({ path: path.join(screenshots, `presence-question-${width}.png`) });
+  }
+  await framePage.locator('#aiQuestion').fill('这是以前旅行时拍的。'); await framePage.locator('#aiSend').click();
+  await framePage.waitForFunction(() => document.querySelector('#aiMessages')?.textContent.includes('谢谢您分享'));
+  assert.deepEqual(providerInputs[1].history.map(item => item.role), ['user', 'assistant']);
+  assert.equal(providerInputs[1].history[1].content, '这张照片让您想起了什么？');
+  await framePage.locator('#aiClose').click();
+  providerFails = true;
+  await api('presenceReport', makeEvent(), token); await framePage.locator('#presenceAccept').waitFor({ state: 'visible', timeout: 7000 });
+  await framePage.locator('#presenceAccept').click();
+  await framePage.waitForFunction(() => document.querySelector('#aiStatus')?.textContent.includes('已保留普通对话'));
   assert.equal(await framePage.locator('#aiReadPhoto').isChecked(), false);
-  assert.equal(actions.some(action => ['aiChat', 'aiTranscribe', 'aiRealtimeStart'].includes(action)), false);
+  assert.equal(await framePage.locator('#aiQuestion').isEnabled(), true);
+  assert.equal(providerInputs.length, 3);
   await framePage.locator('#aiClose').click();
   await api('presenceReport', makeEvent(), token); await framePage.locator('#presenceInvitation').waitFor({ state: 'visible', timeout: 7000 });
   await api('presenceSensorRevoke', { deviceId: 'living-room-link2' }, owner.token);
   await framePage.evaluate(() => poll()); assert.equal(await framePage.locator('#presenceInvitation').count(), 0);
   assert.deepEqual(errors, []);
-  t.diagnostic(`Chrome ${await browser.version()}, real production Node HTTP + isolated LocalStore + synthetic uploaded photo; no API replacement, cloud/hardware/microphone/provider/GPU claim.`);
+  t.diagnostic(`Chrome ${await browser.version()}, real production Node HTTP + isolated LocalStore + synthetic uploaded photo + AI provider double; no API replacement, real model, cloud, hardware, microphone or GPU claim.`);
 });

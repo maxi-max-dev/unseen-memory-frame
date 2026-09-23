@@ -13,6 +13,7 @@ function fixture(overrides={}){
   const $=selector=>{if(!nodes.has(selector))nodes.set(selector,element());return nodes.get(selector)};
   const context=vm.createContext({console,URL,DOMException,AbortController,queueMicrotask,
     $,esc:value=>String(value??''),safeLink:value=>{try{return new URL(value).protocol==='https:'?value:'#'}catch{return '#'}},
+    MemorySpatialLink:require('../server/public/spatial-link'),sending:false,
     frame:false,session:{token:'test'},sessionExpired:false,state:{messages:[{_id:'message',link}]},draft:{},
     document:{querySelectorAll:()=>[],createElement:element,addEventListener:(name,fn)=>events.set(name,fn)},window:{addEventListener(){}},
     setTimeout:(fn,ms)=>{const id=++serial;timers.set(id,{fn,ms});return id},clearTimeout:id=>timers.delete(id),
@@ -23,7 +24,17 @@ function fixture(overrides={}){
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
 test('only the exact supported HTTPS share shape offers import',()=>{
   const f=fixture();assert.equal(f.run(`eligibleSpatialLink(${JSON.stringify(link)})`),true);
-  for(const bad of [link.replace('https:','http:'),link.replace('app.insta360.com','app.insta360.com.evil.test'),link.replace('app.insta360.com','name@app.insta360.com'),link+'/extra',link.replace('GS3DC','GS3D')])assert.equal(f.context.eligibleSpatialLink(bad),false,bad);
+  for(const bad of [link.replace('https:','http:'),link.replace('app.insta360.com','app.insta360.com.evil.test'),link.replace('app.insta360.com','name@app.insta360.com'),link+'/extra',link.replace('GS3DC','GS3D'),link+'#x',' '+link,link.replace('https://','https:\\\\')])assert.equal(f.context.eligibleSpatialLink(bad),false,bad);
+});
+
+test('composer distinguishes share text, video and model files and labels the real send action',()=>{
+  const f=fixture();
+  f.context.draft.link='看看我们的时光舱 '+link+'?source=PHONE';f.context.refreshLinkHint();
+  assert.match(f.$('#spatialLinkHint').textContent,/已从分享文字/);assert.equal(f.$('#send').textContent,'寄出并导入空间');
+  f.context.draft.link='https://example.com/video.mp4';f.context.refreshLinkHint();
+  assert.match(f.$('#spatialLinkHint').textContent,/视频重建/);assert.equal(f.$('#send').textContent,'寄出来源链接');
+  assert.match(f.context.spatialPanel({_id:'file',link:'https://example.com/file.sog'}),/模型文件地址/);
+  assert.match(f.context.spatialPanel({_id:'failed',link,spatial:{status:'failed',failureStage:'resolving',error:'测试失败'}}),/正在读取分享页面时未完成/);
 });
 test('a queued result remains queued; a duplicate UI click does not start another request',async()=>{
   let finish,calls=0;const f=fixture({api:()=>{calls++;return new Promise(resolve=>{finish=resolve})}});

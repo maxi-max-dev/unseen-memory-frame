@@ -1,10 +1,12 @@
 'use strict';
 globalThis.MemoryAI = (() => {
-  let dialog, controller, recorder, focusOrigin, suspended = false, checkingCaps = false, epoch = 0, history = [], caps = null, identity = '', capturing = false, busy = false, answer = '', picked = [], voice = null, voiceURL = '';
+  let dialog, controller, recorder, focusOrigin, proactiveRun = null, suspended = false, checkingCaps = false, epoch = 0, history = [], caps = null, identity = '', capturing = false, busy = false, answer = '', picked = [], voice = null, voiceURL = '';
+  const automaticHistory = new WeakSet();
   const el = id => dialog?.querySelector('#' + id);
   const status = message => { if (el('aiStatus')) el('aiStatus').textContent = message; };
   const active = generation => dialog?.open && generation === epoch && identity === session?.token && !sessionExpired;
   function cancel(message = '已停止。可以继续输入问题。') {
+    proactiveRun = null;
     const wasChecking = checkingCaps; checkingCaps = false;
     epoch++; controller?.abort(); controller = null; recorder?.cancel(); recorder = null; capturing = false; busy = false;
     globalThis.speechSynthesis?.cancel(); dialog?.querySelectorAll('audio').forEach(audio => audio.pause()); update(); status(message);
@@ -28,15 +30,15 @@ globalThis.MemoryAI = (() => {
   function update() {
     if (!dialog) return;
     const vision = Boolean(el('aiReadPhoto')?.checked);
-    el('aiSend').disabled = busy || capturing || checkingCaps || !caps || !(vision ? caps.vision : caps.text);
-    el('aiRecord').disabled = busy || checkingCaps || !caps?.asr;
+    el('aiSend').disabled = busy || capturing || checkingCaps || !!proactiveRun || !caps || !(vision ? caps.vision : caps.text);
+    el('aiRecord').disabled = busy || checkingCaps || !!proactiveRun || !caps?.asr;
     el('aiRetry').disabled = busy || capturing || checkingCaps;
     el('aiRecord').textContent = capturing ? '结束录音并转写' : '用语音输入';
-    el('aiMemory').disabled = busy || capturing; el('aiAddPhoto').disabled = busy || capturing || picked.length >= 4;
-    el('aiReadPhoto').disabled = busy || capturing || !caps?.vision || !picked.length;
+    el('aiMemory').disabled = busy || capturing || !!proactiveRun; el('aiAddPhoto').disabled = busy || capturing || !!proactiveRun || picked.length >= 4;
+    el('aiReadPhoto').disabled = busy || capturing || !!proactiveRun || !caps?.vision || !picked.length;
     el('aiPhotoChoice').hidden = !picked.length;
-    el('aiPhotos').querySelectorAll('button').forEach(button => { button.disabled = busy || capturing; });
-    el('aiQuestion').disabled = busy || capturing;
+    el('aiPhotos').querySelectorAll('button').forEach(button => { button.disabled = busy || capturing || !!proactiveRun; });
+    el('aiQuestion').disabled = busy || capturing || !!proactiveRun;
     el('aiSpeak').disabled = busy || capturing || !answer || !globalThis.speechSynthesis || !globalThis.SpeechSynthesisUtterance;
   }
   function renderPhotos() {
@@ -52,7 +54,7 @@ globalThis.MemoryAI = (() => {
   }
   function renderHistory() {
     const box = el('aiMessages'); box.replaceChildren();
-    for (const item of history) { const p = document.createElement('p'); const label = document.createElement('strong'); label.textContent = item.role === 'user' ? '你：' : 'AI：'; p.append(label, document.createTextNode(item.content)); box.append(p); }
+    for (const item of history) { if (automaticHistory.has(item)) continue; const p = document.createElement('p'); const label = document.createElement('strong'); label.textContent = item.role === 'user' ? '你：' : 'AI：'; p.append(label, document.createTextNode(item.content)); box.append(p); }
     box.scrollTop = box.scrollHeight;
   }
   async function request(action, data, generation) {
@@ -125,17 +127,19 @@ globalThis.MemoryAI = (() => {
       if (active(generation)) { el('aiCapabilities').textContent = '暂时无法检查聊天功能，请检查网络后重试。'; el('aiRetry').hidden = false; status('输入内容会保留。'); }
     } finally { if (active(generation)) { checkingCaps = false; update(); } }
   }
-  async function open(messageId = '') {
+  async function openConversation(messageId = '', fromPresence = false) {
     if (!session || sessionExpired) return toast('请先登录家庭');
     if (recording) return toast('请先结束正在录给家人的原声');
     const origin = document.activeElement; dispose(); focusOrigin = origin; identity = session.token; caps = null;
     dialog = document.createElement('dialog'); dialog.className = 'ai-dialog'; dialog.setAttribute('aria-labelledby', 'aiTitle');
+    const run = fromPresence ? { dialog, token: identity, room: session.room, photoId: messageId, image: presencePhoto(messageId)?.image } : null;
+    proactiveRun = run;
     dialog.innerHTML = `<div class="row between ai-dialog-heading"><h2 id="aiTitle">和 AI 聊聊</h2><button id="aiClose" type="button" aria-label="关闭 AI 对话">关闭 ×</button></div><p class="muted">可以随便聊聊，也可加照片。聊天仅保留本窗口最近 6 轮；切换实时语音后返回仍可继续。</p><details id="aiPhotoPicker" class="ai-photo-picker"><summary>添加家庭照片（可选，最多 4 张）</summary><label>选择照片（合计不超过 8 MB）<select id="aiMemory"><option value="">选择照片</option></select></label><button id="aiAddPhoto" type="button">添加到对话</button></details><div id="aiPhotos" class="ai-photos" aria-label="当前对话照片"></div><label id="aiPhotoChoice" class="ai-photo-choice"><input id="aiReadPhoto" type="checkbox">让 AI 读取当前选中的照片</label><p id="aiCapabilities" class="muted">正在检查可用功能…</p><button id="aiRetry" type="button" hidden>重新检查聊天功能</button><div id="aiMessages" class="ai-messages" role="log" aria-label="本次对话" aria-live="polite"></div><form id="aiForm"><label>想说的话<textarea id="aiQuestion" autofocus maxlength="2000" rows="3" placeholder="聊聊今天，比较照片，或请 AI 帮你给家人留言"></textarea></label><div class="row"><button id="aiSend" class="primary" type="submit">发送</button><button id="aiRecord" type="button">用语音输入</button><button id="aiStop" type="button">停止</button></div></form><div id="aiVoicePreview"></div><p id="aiStatus" role="status" aria-live="polite"></p><div class="row"><button id="aiSpeak" type="button">朗读回复</button><button id="aiNew" type="button">清空对话</button></div><div id="aiAction"></div><small>AI 回复不会自动写入家庭记忆。语音输入会交给识别服务转写；朗读使用设备语音，音色与可用性因设备而异。关闭或切到后台会停止录音和朗读。留言与联系必须另行检查确认卡片，语音中的“好”不会执行操作。</small>`;
     document.body.append(dialog);
     const liveButton = document.createElement('button'); liveButton.id = 'aiRealtimeEntry'; liveButton.type = 'button'; liveButton.className = 'ai-realtime-entry'; liveButton.textContent = '想直接说话？打开实时语音';
     liveButton.onclick = () => globalThis.MemoryRealtime?.open(); el('aiTitle').parentNode.after(liveButton);
     for (const m of (state?.messages || []).filter(m => !m.deleted && m.type === 'photo' && m.image)) { const option = document.createElement('option'); option.value = m._id; option.textContent = m.title || m.card?.title || (m.text || '一份家庭记忆').slice(0, 28); el('aiMemory').append(option); }
-    if ([...el('aiMemory').options].some(o => o.value === messageId) && messageId) { picked = [messageId]; el('aiPhotoPicker').open = true; renderPhotos(); }
+    if ([...el('aiMemory').options].some(o => o.value === messageId) && messageId) { picked = [messageId]; el('aiPhotoPicker').open = !fromPresence; renderPhotos(); }
     el('aiClose').onclick = close; dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
     el('aiForm').onsubmit = send; el('aiRetry').onclick = checkCapabilities;
     el('aiQuestion').onkeydown = event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing && !el('aiSend').disabled) { event.preventDefault(); void send(); } };
@@ -144,7 +148,71 @@ globalThis.MemoryAI = (() => {
     el('aiAddPhoto').onclick = () => { const id = el('aiMemory').value; if (!id || picked.includes(id)) return; if (picked.length >= 4) return status('最多选择 4 张照片。'); picked.push(id); renderPhotos(); update(); status('照片已添加，聊天记录保留。可勾选让 AI 读取照片。'); };
     el('aiReadPhoto').onchange = () => { update(); status('照片读取方式已更新，聊天记录保留。'); };
     dialog.showModal(); update();
-    await checkCapabilities();
+    const capabilities = checkCapabilities();
+    if (run) run.epoch = epoch;
+    await capabilities;
+    if (run) return askFromPresence(run);
+  }
+
+  // The ordinary entry keeps its existing manual photo/voice behavior.
+  function open(messageId = '') { return openConversation(messageId); }
+  function presencePhoto(messageId) { return state?.messages.find(message => message._id === messageId && !message.deleted && message.type === 'photo' && message.image && message.imageURL); }
+  function presenceContext(run) {
+    return proactiveRun === run && run.dialog === dialog && run.token === identity && active(run.epoch)
+      && session?.room === run.room && !document.hidden && presencePhoto(run.photoId)?.image === run.image
+      && !recording && !(typeof recordingStarting !== 'undefined' && recordingStarting)
+      && !globalThis.MemoryRealtime?.busy() && !globalThis.MemoryCall?.busy?.();
+  }
+  function refreshProactive() {
+    const run = proactiveRun; if (!run || presenceContext(run)) return;
+    // Cancel immediately when a state refresh removes/replaces the consented photo.
+    // Never update a newer conversation, even when it contains the same photo.
+    if (dialog !== run.dialog) { proactiveRun = null; return; }
+    const missingPhoto = presencePhoto(run.photoId)?.image !== run.image;
+    if (missingPhoto) { picked = picked.filter(id => id !== run.photoId); el('aiReadPhoto').checked = false; renderPhotos(); }
+    cancel(missingPhoto ? '这张照片已不可用，已停止读取。可以直接聊聊。' : '已停止自动提问。可以直接输入想说的话。');
+  }
+  function presenceFallback(run, message) {
+    if (!presenceContext(run)) { refreshProactive(); return { opened: false, outcome: 'cancelled' }; }
+    proactiveRun = null; busy = false; el('aiReadPhoto').checked = false; update(); status(message);
+    return { opened: true, outcome: 'fallback' };
+  }
+  async function askFromPresence(run) {
+    if (!presenceContext(run)) { refreshProactive(); return { opened: false, outcome: 'cancelled' }; }
+    if (!caps?.vision) return presenceFallback(run, '暂时无法读取照片，已保留普通对话。可以直接输入，或稍后重新检查聊天功能。');
+    el('aiReadPhoto').checked = true; run.epoch = ++epoch; busy = true; update(); status('AI 正在看这张照片，准备问您一句…');
+    try {
+      const result = await request('aiChat', {
+        text: '请根据当前这张照片，只提出一句简短、温和、开放式的问题，邀请我分享回忆。仅提及能够明确看见的细节，不猜测人物身份、亲属关系、地点、时间、情绪或照片背后的经历。看不清时问“这张照片让您想起了什么？”这类不预设事实的问题。只返回一个问句，不解释分析，也不提出留言或联系建议。',
+        history: [], messageIds: [run.photoId], readPhoto: true
+      }, run.epoch);
+      if (!presenceContext(run)) { refreshProactive(); return { opened: false, outcome: 'cancelled' }; }
+      const question = typeof result?.answer === 'string' ? result.answer.trim() : '';
+      // Keep this entry to one short question. Unexpected/empty/nonvisual replies
+      // return to ordinary chat, and action suggestions are never executed here.
+      if (!result?.imageUsed || !question || question.length > 160 || !/^[^。！？!?\n\r]+[？?]$/.test(question)) {
+        return presenceFallback(run, '暂时没能生成合适的开场问题。已保留普通对话，可以直接聊聊。');
+      }
+      // The API requires complete user/assistant pairs for the next manual turn.
+      const seed = { role: 'user', content: '请根据这张照片，先问我一个问题。' };
+      automaticHistory.add(seed); // Internal context is not something the elder said.
+      history = [seed, { role: 'assistant', content: question }];
+      answer = question; proactiveRun = null; busy = false; renderHistory(); update();
+      status('AI 已结合这张照片提问。您可以慢慢打字回答，或自己点击“用语音输入”。');
+      return { opened: true, outcome: 'question' };
+    } catch (error) {
+      if (!presenceContext(run)) { refreshProactive(); return { opened: false, outcome: 'cancelled' }; }
+      return presenceFallback(run, '暂时没能读取照片并提问。已保留普通对话，可以直接输入想说的话。');
+    }
+  }
+  function openFromPresence(messageId) {
+    // Only the explicitly accepted frame invitation calls this controlled entry.
+    if (!frame || session?.role !== 'frame' || !session?.token || sessionExpired || document.hidden
+      || dialog?.open || suspended || busy || capturing || checkingCaps || recording
+      || (typeof recordingStarting !== 'undefined' && recordingStarting) || !presencePhoto(messageId)) {
+      return Promise.resolve({ opened: false, outcome: 'unavailable' });
+    }
+    return openConversation(messageId, true);
   }
 
   function mount() {
@@ -166,5 +234,5 @@ globalThis.MemoryAI = (() => {
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden && dialog?.open) cancel('页面已切到后台，录音和朗读已停止。'); });
   globalThis.addEventListener('pagehide', () => dispose());
-  return { busy: () => Boolean(dialog?.open || busy || capturing || checkingCaps), open, mount, dispose, resume, suspendForRealtime, addMemoryEntry, pauseForCall: () => cancel('AI 录音和朗读已暂停，可以和家人通话。') };
+  return { busy: () => Boolean(dialog?.open || busy || capturing || checkingCaps), open, openFromPresence, refreshProactive, mount, dispose, resume, suspendForRealtime, addMemoryEntry, pauseForCall: () => cancel('AI 录音和朗读已暂停，可以和家人通话。') };
 })();

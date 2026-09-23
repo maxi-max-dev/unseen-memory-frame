@@ -802,3 +802,123 @@ test('a hidden late AI result never hands a call to the media controller even be
   await pending; assert.equal(f.callStarts.length, 0); assert.deepEqual(f.callCancellations, [{ requestId: 'call-request-1', token: 'account-a' }]);
   f.document.hidden = false; f.listeners.visibilitychange(); assert.equal(f.callStarts.length, 0); assert.equal(f.$('actionConfirm'), null);
 });
+
+// Proactive entry is called only by an accepted frame invitation. These are
+// controller/DOM and provider doubles, not browser or actual model evidence.
+function presenceFixture(options = {}) {
+  const f = fixture(options); f.context.frame = true;
+  f.context.session.role = 'frame'; f.context.session.room = 'local-presence-fixture';
+  return f;
+}
+test('confirmed presence asks once about its fixed photo and next manual turn keeps valid history pairs', async () => {
+  const caps = deferred();
+  const f = presenceFixture({ api: (call, normal) => call.action === 'aiCapabilities' ? caps.promise
+    : call.action === 'aiChat' && !call.data.history.length ? { answer: '这张照片让您想起了什么？', imageUsed: true, action: { kind: 'contact', targetHint: '某人' } } : normal(call.action, call.data) });
+  const pending = f.context.MemoryAI.openFromPresence('m_2');
+  assert.equal(f.$('aiQuestion').disabled, true); assert.equal(f.$('aiReadPhoto').checked, false);
+  assert.equal(f.$('aiPhotoPicker').open, false);
+  await f.context.MemoryAI.openFromPresence('m_2');
+  assert.equal(f.actionCalls('aiCapabilities').length, 1); assert.equal(f.actionCalls('aiChat').length, 0);
+  f.context.state.messages.push({ _id: 'newest', type: 'photo', image: 'newest', imageURL: '/newest' });
+  caps.resolve({ text: true, vision: true, asr: true }); const result = await pending;
+  assert.equal(result.outcome, 'question'); assert.equal(f.actionCalls('aiChat').length, 1);
+  assert.deepEqual(f.actionCalls('aiChat')[0].data.messageIds, ['m_2']);
+  assert.equal(f.actionCalls('aiChat')[0].data.readPhoto, true);
+  assert.match(f.$('aiMessages').textContent, /这张照片让您想起了什么？/);
+  assert.equal(f.$('aiReadPhoto').checked, true); assert.equal(f.recorders.length, 0); assert.equal(f.microphoneCalls(), 0);
+  assert.equal(f.$('aiAction').textContent, ''); assert.equal(f.utterances.length, 0);
+  await f.send('这是多年前的一次旅行');
+  const next = f.actionCalls('aiChat')[1].data;
+  assert.deepEqual(next.history.map(item => item.role), ['user', 'assistant']);
+  assert.equal(next.history[1].content, '这张照片让您想起了什么？');
+});
+test('ordinary open still selects a photo without reading it or starting AI', async () => {
+  const f = presenceFixture(); await f.context.MemoryAI.open('m_2');
+  assert.equal(f.$('aiPhotoPicker').open, true);
+  assert.equal(f.actionCalls('aiChat').length, 0); assert.equal(f.$('aiReadPhoto').checked, false);
+  assert.equal(f.recorders.length, 0);
+});
+test('presence hides only its automatic seed while identical manual speech remains visible and API history stays complete', async () => {
+  const seed = '请根据这张照片，先问我一个问题。';
+  const f = presenceFixture({ api: (call, normal) => call.action === 'aiChat' && !call.data.history.length
+    ? { answer: '这张照片让您想起了什么？', imageUsed: true } : normal(call.action, call.data) });
+  await f.context.MemoryAI.openFromPresence('m_2');
+  assert.equal(f.$('aiMessages').textContent, 'AI：这张照片让您想起了什么？');
+  await f.send(seed);
+  const visible = f.$('aiMessages').querySelectorAll('p').map(item => item.textContent);
+  assert.equal(visible.filter(text => text.startsWith('你：')).length, 1);
+  assert.equal(visible[1], '你：' + seed);
+  assert.deepEqual(f.actionCalls('aiChat')[1].data.history, [
+    { role: 'user', content: seed }, { role: 'assistant', content: '这张照片让您想起了什么？' }
+  ]);
+  await f.send('继续聊聊');
+  const history = f.actionCalls('aiChat')[2].data.history;
+  assert.deepEqual(history.map(item => item.role), ['user', 'assistant', 'user', 'assistant']);
+  assert.equal(history[2].content, seed);
+  assert.ok(history.every(item => Object.keys(item).sort().join(',') === 'content,role'));
+});
+const cancelPresence = {
+  close: f => f.$('aiClose').click(),
+  stop: f => f.$('aiStop').click(),
+  clear: f => f.$('aiNew').click(),
+  background: f => { f.document.hidden = true; f.listeners.visibilitychange(); },
+  'hidden before visibility notification': f => { f.document.hidden = true; },
+  'identity changed': f => { f.context.session = { token: 'account-b', role: 'frame', room: 'other-room' }; },
+  'session expired': f => { f.context.sessionExpired = true; },
+  'photo removed': f => { f.context.state.messages = f.context.state.messages.filter(item => item._id !== 'm_2'); f.context.MemoryAI.refreshProactive(); },
+  'photo replaced': f => { f.context.state.messages.find(item => item._id === 'm_2').image = 'replacement'; f.context.MemoryAI.refreshProactive(); },
+  'family recording started': f => { f.context.recording = {}; f.context.MemoryAI.refreshProactive(); },
+  'switch to realtime': f => f.context.MemoryAI.suspendForRealtime()
+};
+for (const [name, cancel] of Object.entries(cancelPresence)) test('presence capability response cannot start AI after ' + name, async () => {
+  const caps = deferred(); const f = presenceFixture({ api: (call, normal) => call.action === 'aiCapabilities' ? caps.promise : normal(call.action, call.data) });
+  const pending = f.context.MemoryAI.openFromPresence('m_2'); cancel(f);
+  caps.resolve({ text: true, vision: true, asr: true }); await pending;
+  assert.equal(f.actionCalls('aiChat').length, 0); assert.equal(f.recorders.length, 0); assert.equal(f.microphoneCalls(), 0);
+});
+test('late capability from closed presence window cannot use a reopened window with the same photo', async () => {
+  const caps = deferred(); let first = true;
+  const f = presenceFixture({ api: (call, normal) => { if (call.action === 'aiCapabilities' && first) { first = false; return caps.promise; } return normal(call.action, call.data); } });
+  const pending = f.context.MemoryAI.openFromPresence('m_2'); f.$('aiClose').click();
+  await f.context.MemoryAI.open('m_2'); f.$('aiQuestion').value = '新窗口的草稿';
+  caps.resolve({ text: true, vision: true, asr: true }); await pending;
+  assert.equal(f.actionCalls('aiChat').length, 0); assert.equal(f.$('aiQuestion').value, '新窗口的草稿');
+  assert.equal(f.$('aiReadPhoto').checked, false);
+});
+for (const [name, cancel] of Object.entries(cancelPresence)) test('late opening question cannot update the conversation after ' + name, async () => {
+  const reply = deferred(); const f = presenceFixture({ api: (call, normal) => call.action === 'aiChat' ? reply.promise : normal(call.action, call.data) });
+  const pending = f.context.MemoryAI.openFromPresence('m_2'); await settle();
+  assert.equal(f.actionCalls('aiChat').length, 1); const request = f.actionCalls('aiChat')[0]; cancel(f);
+  reply.resolve({ answer: '旧请求的回答是什么？', imageUsed: true }); await pending;
+  assert.doesNotMatch(f.$('aiMessages')?.textContent || '', /旧请求的回答/);
+  if (!['hidden before visibility notification', 'identity changed', 'session expired'].includes(name)) assert.equal(request.signal.aborted, true);
+});
+test('late opening question cannot overwrite a new conversation after reopening the same photo', async () => {
+  const reply = deferred(); let first = true;
+  const f = presenceFixture({ api: (call, normal) => { if (call.action === 'aiChat' && first) { first = false; return reply.promise; } return normal(call.action, call.data); } });
+  const pending = f.context.MemoryAI.openFromPresence('m_2'); await settle();
+  f.$('aiClose').click(); await f.context.MemoryAI.open('m_2'); await f.send('新窗口的问题');
+  const text = f.$('aiMessages').textContent, note = f.$('aiStatus').textContent;
+  reply.resolve({ answer: '旧请求的回答是什么？', imageUsed: true }); await pending;
+  assert.equal(f.$('aiMessages').textContent, text); assert.equal(f.$('aiStatus').textContent, note);
+});
+for (const [name, response] of Object.entries({
+  unavailable: () => ({ answer: '这张照片让您想起什么？', imageUsed: false }),
+  malformed: () => ({ answer: '这是一张照片。您在哪里？', imageUsed: true }),
+  empty: () => ({ answer: '', imageUsed: true }),
+  failed: () => { throw Error('provider fixture unavailable'); }
+})) test('presence ' + name + ' answer falls back to ordinary chat without automatic retry', async () => {
+  const f = presenceFixture({ api: (call, normal) => call.action === 'aiChat' ? response() : normal(call.action, call.data) });
+  const result = await f.context.MemoryAI.openFromPresence('m_2');
+  assert.equal(result.outcome, 'fallback'); assert.equal(f.$('aiReadPhoto').checked, false);
+  assert.equal(f.$('aiQuestion').disabled, false); assert.match(f.$('aiStatus').textContent, /普通对话/);
+  assert.equal(f.actionCalls('aiChat').length, 1); assert.equal(f.recorders.length, 0);
+});
+for (const failed of [false, true]) test('presence capability ' + (failed ? 'failure' : 'without vision') + ' falls back and a capability retry stays manual', async () => {
+  let first = true;
+  const f = presenceFixture({ api: (call, normal) => { if (call.action === 'aiCapabilities' && first) { first = false; if (failed) throw Error('fixture network'); return { text: true, vision: false, asr: false }; } return normal(call.action, call.data); } });
+  const result = await f.context.MemoryAI.openFromPresence('m_2');
+  assert.equal(result.outcome, 'fallback'); assert.equal(f.actionCalls('aiChat').length, 0);
+  assert.equal(f.$('aiReadPhoto').checked, false); assert.match(f.$('aiStatus').textContent, /普通对话/);
+  await f.$('aiRetry').click(); assert.equal(f.actionCalls('aiChat').length, 0);
+});

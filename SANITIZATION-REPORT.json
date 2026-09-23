@@ -1,7 +1,7 @@
 {
   "format": 1,
   "passed": true,
-  "scannedFiles": 166,
+  "scannedFiles": 191,
   "rules": [
     "deployment-environment",
     "historical-login",
@@ -9,6 +9,7 @@
     "private-key",
     "provider-key",
     "bearer-jwt",
+    "sensor-token",
     "signed-media-url",
     "credential-url"
   ],
@@ -19,7 +20,8 @@
     "local cloud settings and environment files",
     "private tooling and machine paths",
     "original demo photographs",
-    "TRTC SDK binary"
+    "TRTC SDK binary",
+    "device SDK files, binaries, build outputs, private configuration and original archives"
   ],
   "transformations": [
     {
@@ -53,12 +55,12 @@
       "count": 1
     },
     {
-      "path": "test/message-history.test.js",
+      "path": "test/helpers/spatial-fixture.js",
       "category": "external-scene-fixture",
       "count": 1
     },
     {
-      "path": "test/spatial-import.test.js",
+      "path": "test/message-history.test.js",
       "category": "external-scene-fixture",
       "count": 1
     },
@@ -71,6 +73,31 @@
       "path": "test/spatial-ui.test.js",
       "category": "external-scene-fixture",
       "count": 1
+    },
+    {
+      "path": "devices/link2-windows/README.md",
+      "category": "deployment-environment",
+      "count": 1
+    },
+    {
+      "path": "devices/link2-windows/README.md",
+      "category": "deployment-origin",
+      "count": 1
+    },
+    {
+      "path": "devices/link2-windows/presence_uploader.cjs",
+      "category": "deployment-environment",
+      "count": 1
+    },
+    {
+      "path": "devices/link2-windows/presence_uploader.cjs",
+      "category": "deployment-origin",
+      "count": 1
+    },
+    {
+      "path": "devices/link2-windows/test/current-api.test.cjs",
+      "category": "device-application-reference",
+      "count": 2
     }
   ],
   "findings": [],

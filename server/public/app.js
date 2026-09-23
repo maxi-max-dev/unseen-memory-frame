@@ -29,7 +29,7 @@ function shell(){
   renderDraft();applyLocalDisplay();globalThis.MemoryAI?.mount();if(globalThis.MemoryContact&&!document.querySelector("#openContact")){const contactButton=document.createElement("button");contactButton.id="openContact";contactButton.textContent="联系家人";contactButton.onclick=()=>MemoryContact.open();$("#settings").before(contactButton)}
   if(frame)mountFrameMenu();
 }
-function composerHTML(){return `<div class="composer"><h2 id="composerTitle">发给家里的相框</h2><div class="segmented" role="tablist" aria-label="发送内容类型"><button id="photoComposeTab" role="tab" aria-selected="true">照片</button><button id="spatialComposeTab" role="tab" aria-selected="false">3D 空间</button></div><div class="form"><section id="photoComposePanel"><label class="photo-drop">选一张今天的照片<input id="file" type="file" accept="image/*"></label><img id="draftImage" class="preview" hidden alt="待发送照片"><p class="muted">照片中的人物和年代，可以寄出后在记忆详情里由家人补充。</p></section><section id="spatialComposePanel" hidden><label>粘贴影石分享链接<input id="draftLink" type="url" inputmode="url" maxlength="2000" placeholder="https://app.insta360.com/3dspace/detail/…" aria-describedby="spatialLinkHint"></label><small id="spatialLinkHint">寄出链接后可导入空间，完成后两端都能观看。</small></section><div id="draftContext" class="draft-context" hidden><span id="draftContextText"></span><button id="detachParent" class="quiet">取消关联</button></div><label>写一句话（可选）<textarea id="draftText" maxlength="3000" placeholder="这张照片是哪一年拍的？给我讲讲吧。"></textarea></label><div class="row"><button id="record" class="red">● 录一段原声</button><small>真实录音 · 最长 60 秒</small></div><div id="recorder" class="recording" hidden></div><button id="send" class="primary full">寄到相框</button><div class="row between"><small id="draftStatus">草稿保存在此设备</small><button id="discard" class="quiet">清空草稿</button></div><small>照片和空间可以一同发送；切换标签不会清除已选内容。</small></div></div>`}
+function composerHTML(){return `<div class="composer"><h2 id="composerTitle">发给家里的相框</h2><div class="segmented" role="tablist" aria-label="发送内容类型"><button id="photoComposeTab" role="tab" aria-selected="true">照片</button><button id="spatialComposeTab" role="tab" aria-selected="false">3D 空间</button></div><div class="form"><section id="photoComposePanel"><label class="photo-drop">选一张今天的照片<input id="file" type="file" accept="image/*"></label><img id="draftImage" class="preview" hidden alt="待发送照片"><p class="muted">照片中的人物和年代，可以寄出后在记忆详情里由家人补充。</p></section><section id="spatialComposePanel" hidden><label>粘贴影石时光舱分享链接或文字<input id="draftLink" type="text" inputmode="url" maxlength="2000" placeholder="https://app.insta360.com/3dspace/detail/…" aria-describedby="spatialLinkHint"></label><small id="spatialLinkHint" role="status" aria-live="polite"></small><details><summary>在哪里复制作品链接？</summary><p class="muted">在影石 App 打开已生成的时光舱作品，选择分享，再选择“网页链接分享”。复制后粘贴到这里，点“寄出并导入空间”。</p><p class="muted">此处导入已经生成的 3D 作品。普通视频和时光舱特效视频不能直接变为空间，也不接收本地 SOG / ZIP 文件。</p></details></section><div id="draftContext" class="draft-context" hidden><span id="draftContextText"></span><button id="detachParent" class="quiet">取消关联</button></div><label>写一句话（可选）<textarea id="draftText" maxlength="3000" placeholder="这张照片是哪一年拍的？给我讲讲吧。"></textarea></label><div class="row"><button id="record" class="red">● 录一段原声</button><small>真实录音 · 最长 60 秒</small></div><div id="recorder" class="recording" hidden></div><button id="send" class="primary full">寄到相框</button><div class="row between"><small id="draftStatus">草稿保存在此设备</small><button id="discard" class="quiet">清空草稿</button></div><small>照片和空间可以一同发送；切换标签不会清除已选内容。</small></div></div>`}
 function bindComposer(){$('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{draft.image=await compress(f);delete draft.imageId;delete draft.parent;await saveDraft();renderDraft()}catch(e){toast(e.message)}};$('#draftText').oninput=e=>{draft.text=e.target.value;saveDraft().catch(()=>toast('草稿保存失败，请保持页面打开'))};$('#draftLink').oninput=e=>{draft.link=e.target.value;refreshLinkHint();saveDraft().catch(()=>toast('草稿保存失败，请保持页面打开'))};$('#record').onclick=startRecording;$('#send').onclick=send;$('#discard').onclick=async()=>{if(recording)return toast('请先结束录音');draft={};await saveDraft();renderDraft()}}
 async function compress(file){const bitmap=await createImageBitmap(file);const scale=Math.min(1,1800/Math.max(bitmap.width,bitmap.height));const c=document.createElement('canvas');c.width=Math.round(bitmap.width*scale);c.height=Math.round(bitmap.height*scale);c.getContext('2d').drawImage(bitmap,0,0,c.width,c.height);bitmap.close();const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',.85));if(!blob||blob.size>3000000)throw new Error('照片过大，请换一张照片');return blob}
 function previewURL(blob){return URL.createObjectURL(blob)}
@@ -67,7 +67,38 @@ async function startRecording(){
 async function stopRecording(){const rec=recording;if(!rec)return;recording=null;reportFramePresence(true);clearInterval(rec.timer);rec.processor.disconnect();rec.source.disconnect();rec.silent.disconnect();rec.stream.getTracks().forEach(t=>t.stop());try{const input=rec.context.createBuffer(1,Math.max(1,rec.samples),rec.context.sampleRate);let offset=0;for(const c of rec.chunks){input.getChannelData(0).set(c,offset);offset+=c.length}const length=Math.min(960000,Math.floor(input.duration*16000));if(length<1600)throw new Error('录音太短，请再说一段');const offline=new OfflineAudioContext(1,length,16000),source=offline.createBufferSource();source.buffer=input;source.connect(offline.destination);source.start();const output=await offline.startRendering();draft.audio=wav(output.getChannelData(0));draft.duration=length/16000;draft.parent=rec.parent;delete draft.audioId;await saveDraft();renderDraft()}catch(e){toast(e.message)}finally{await rec.context.close();$('#record').disabled=false;if($('#send'))$('#send').disabled=false}}
 function wav(samples){const buffer=new ArrayBuffer(44+samples.length*2),v=new DataView(buffer);const str=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));str(0,'RIFF');v.setUint32(4,36+samples.length*2,true);str(8,'WAVE');str(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,16000,true);v.setUint32(28,32000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);str(36,'data');v.setUint32(40,samples.length*2,true);samples.forEach((s,i)=>v.setInt16(44+i*2,Math.max(-1,Math.min(1,s))*(s<0?32768:32767),true));return new Blob([buffer],{type:'audio/wav'})}
 async function base64(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result.split(',')[1]);r.onerror=reject;r.readAsDataURL(blob)})}
-async function send(){if(sending||recording)return;sending=true;const button=frame?$('#sendRecording'):$('#send');if(button){button.disabled=true;button.textContent='正在发送…'}try{draft.id ||= crypto.randomUUID();await saveDraft();if(draft.image&&!draft.imageId){draft.imageId=(await api('upload',{base64:await base64(draft.image)})).id;await saveDraft()}if(draft.audio&&!draft.audioId){draft.audioId=(await api('upload',{base64:await base64(draft.audio)})).id;await saveDraft()}const result=await api('send',{id:draft.id,image:draft.imageId,audio:draft.audioId,text:draft.text,link:draft.link,parent:draft.parent});const hasAudio=!!draft.audio,hasSpatial=eligibleSpatialLink(draft.link);draft={};if(!frame){$('#composerDialog').close();showFamilyPage('home');followFrame=false;selected=result.id}await saveDraft();toast(hasSpatial?'链接已寄出，可点“导入空间”保存到家里':'已寄出，等待另一端接收');await poll();if(hasAudio)processMemory(result.id)}catch(e){toast(e.message+'；草稿已保留，可重试')}finally{sending=false;renderDraft();if(button?.isConnected){button.disabled=false;button.textContent=frame?'发送给家人':'寄到相框'}}}
+async function send(){
+  if(sending||recording)return;
+  sending=true;
+  const button=frame?$('#sendRecording'):$('#send');
+  if(button){button.disabled=true;button.textContent='正在发送…'}
+  try{
+    const input=globalThis.MemorySpatialLink.inspect(draft.link);
+    if(input.kind==='invalid')throw new Error(input.hint);
+    if(input.kind==='share')draft.link=input.url;
+    draft.id ||= crypto.randomUUID();await saveDraft();
+    if(draft.image&&!draft.imageId){draft.imageId=(await api('upload',{base64:await base64(draft.image)})).id;await saveDraft()}
+    if(draft.audio&&!draft.audioId){draft.audioId=(await api('upload',{base64:await base64(draft.audio)})).id;await saveDraft()}
+    const result=await api('send',{id:draft.id,image:draft.imageId,audio:draft.audioId,text:draft.text,link:draft.link,parent:draft.parent});
+    const hasAudio=!!draft.audio,hasSpatial=eligibleSpatialLink(draft.link);
+    draft={};
+    if(!frame){$('#composerDialog').close();showFamilyPage('home');followFrame=false;selected=result.id}
+    await saveDraft();
+    toast(hasSpatial?'作品已寄出，正在导入空间':'已寄出，等待另一端接收');
+    await poll();
+    if(hasSpatial){
+      if(state?.messages.some(m=>m._id===result.id)){
+        void importSpatial(result.id);
+        $('#currentSpatial')?.scrollIntoView({block:'center',behavior:'smooth'});
+      }else toast('作品已寄出，等待列表同步后可点“导入空间”');
+    }
+    if(hasAudio)processMemory(result.id);
+  }catch(e){toast(e.message+'；草稿已保留，可重试')}
+  finally{
+    sending=false;renderDraft();
+    if(button?.isConnected){button.disabled=false;button.textContent=frame?'发送给家人':'寄到相框';if(!frame)refreshLinkHint()}
+  }
+}
 function current(){return state?.messages.find(m=>m._id===selected)}function photos(){return state?.messages.filter(m=>m.type==='photo')||[]}
 function move(n){if(!frame)followFrame=false;const p=photos();if(!p.length)return;selected=p[(Math.max(0,p.findIndex(m=>m._id===selected))+n+p.length)%p.length]._id;renderPhoto();refreshExperience();reportFramePresence(true)}
 function renderPhoto(){const p=photos();if(!current())selected=p.at(-1)?._id||'';const m=current();const spatialSlot=$('#currentSpatial');spatialSlot.dataset.spatialMessage=m?._id||'';refreshSpatialPanels();const signature=JSON.stringify([m?._id,m?.imageURL,m?.text,m?.title,m?.audioURL,m?.editedText,m?.link,state?.receipts]);if(signature===lastPhoto)return;lastPhoto=signature;$('#photo').innerHTML=m?.imageURL?`<img src="${esc(m.imageURL)}" alt="${esc(m.title||'家人寄来的照片')}">`:`<div class="empty"><h2>${m?'一封家书':'还没有照片'}</h2><p>${m?'家人的话，也值得珍藏。':frame?'请家人在手机端寄来第一张照片。':'选一张照片，给家里的相框捎个信。'}</p></div>`;$('#caption').innerHTML=m?`<h2>${esc(m.title||'家人寄来的想念')}</h2><p>${esc(m.editedText||m.text||'')}</p><small>${esc(m.name)} · ${new Date(m.createdAt).toLocaleString('zh-CN')} ${!frame?receiptLabel(m):''}</small>`:'';$('#position').textContent=p.length?`${p.findIndex(x=>x._id===selected)+1} / ${p.length}`:'等待第一张照片';$('#prev').disabled=$('#next').disabled=p.length<2;if(!frame){const el=$('#currentAudio');if(el.dataset.message!==(m?._id||'')){el.querySelector('audio')?.pause();el.replaceChildren();el.dataset.message=m?._id||''}if(m?.audioURL&&!el.querySelector('audio')){const label=document.createElement('small');label.textContent='家人的原声';const audio=document.createElement('audio');audio.controls=true;bindAudio(audio,m);el.append(label,audio)}else if(el.querySelector('audio'))refreshAudio(el.querySelector('audio'))}else{if(frameAudio&&frameAudio.dataset.message!==m?._id){frameAudio.pause();frameAudio=null;$('#listen').textContent='▶ 听原声'}if(frameAudio)refreshAudio(frameAudio);$('#listen').disabled=!m?.audioURL}}
@@ -84,12 +115,13 @@ function safeLink(url){try{return new URL(url).protocol==='https:'?url:'#'}catch
 const spatialRequests=new Map(), spatialRequestErrors=new Map();
 let spatialView=null;
 function eligibleSpatialLink(value){
-  try{const url=new URL(value);return url.protocol==='https:'&&url.hostname==='app.insta360.com'&&!url.port&&!url.username&&!url.password&&/^\/3dspace\/detail\/GS3DC[a-fA-F0-9]{32}\/?$/.test(url.pathname)}catch{return false}
+  return !!globalThis.MemorySpatialLink.parseShare(value)
 }
 function refreshLinkHint(){
   const hint=$('#spatialLinkHint');if(!hint)return;
-  const link=(draft.link||'').trim();
-  hint.textContent=!link?'粘贴你有权使用的影石空间分享链接，寄出后可导入到家里。其他 HTTPS 链接仍可保存并查看来源。':eligibleSpatialLink(link)?'这是支持的影石分享链接。寄出后点“导入空间”，导入完成后两端都可以观看。':safeLink(link)!=='#'?'这个链接可以保存并打开来源页；空间导入目前支持影石空间分享链接。':'请粘贴完整的 HTTPS 分享链接。';
+  const input=globalThis.MemorySpatialLink.inspect(draft.link);
+  hint.textContent=input.hint;
+  if(!sending&&$('#send'))$('#send').textContent=input.kind==='share'?'寄出并导入空间':input.url?'寄出来源链接':'寄到相框';
 }
 function spatialLabel(status){return ({queued:'空间等待导入',importing:'空间导入中',ready:'空间可观看',failed:'空间导入未完成'})[status]||'空间状态待确认'}
 function spatialSourceURL(message){const source=message?.spatial?.sourceURL||message?.link;return safeLink(source)==='#'?'':source}
@@ -97,7 +129,7 @@ function spatialPanel(message){
   if(!message?.link&&!message?.spatial)return '';
   const spatial=message.spatial, id=message._id, pending=spatialRequests.has(id), status=spatial?.status;
   const source=spatialSourceURL(message), eligible=eligibleSpatialLink(message.link);
-  if(!eligible&&!spatial)return source?`<p><a class="button quiet" href="${esc(source)}" target="_blank" rel="noopener noreferrer">打开空间原始页面 ↗</a></p>`:'';
+  if(!eligible&&!spatial)return source?`<section class="spatial-card" aria-label="空间来源"><p class="spatial-description">${esc(globalThis.MemorySpatialLink.inspect(message.link).hint)}</p><a class="button quiet" href="${esc(source)}" target="_blank" rel="noopener noreferrer">打开原始页面 ↗</a></section>`:'';
   const active=['queued','importing'].includes(status);
   const percentage=typeof spatial?.progress==='number'&&Number.isFinite(spatial.progress)?Math.max(0,Math.min(100,Math.round(spatial.progress))):null;
   const stages={queued:'等待开始',fetching:'正在读取分享页面',resolving:'正在读取分享页面',downloading:'正在下载空间',validating:'正在校验空间',extracting:'正在检查空间内容',storing:'正在保存到家里',saving:'正在保存到家里'};
@@ -110,7 +142,7 @@ function spatialPanel(message){
   if(awaiting)description='正在等待服务端状态，可以继续寄照片和原声。';
   if(sessionExpired)description=frame?'登录已失效，请重新配对后观看空间。':'登录已失效，请重新登录后导入或观看空间。';
   const requestError=status==='ready'?'':spatialRequestErrors.get(id);
-  return `<section class="spatial-card" aria-label="空间记忆"><div class="row between"><b>${esc(label)}</b><small>影石来源${size}</small></div>${spatial?.sourceTitle?`<p class="spatial-source-title">${esc(spatial.sourceTitle)}</p>`:''}<p class="spatial-description" role="status">${esc(description)}</p>${active?`<progress max="100" ${percentage===null?'':`value="${percentage}"`} aria-label="空间导入进度"></progress>`:''}${status==='failed'&&!awaiting&&spatial.error?`<p class="error">${esc(spatial.error)}</p>`:''}${requestError?`<p class="error" role="status">${esc(requestError)}</p>`:''}<div class="row">${action}${source?`<a class="button quiet" href="${esc(source)}" target="_blank" rel="noopener noreferrer">查看影石来源 ↗</a>`:''}</div></section>`;
+  return `<section class="spatial-card" aria-label="空间记忆"><div class="row between"><b>${esc(label)}</b><small>影石来源${size}</small></div>${spatial?.sourceTitle?`<p class="spatial-source-title">${esc(spatial.sourceTitle)}</p>`:''}<p class="spatial-description" role="status">${esc(description)}</p>${active?`<progress max="100" ${percentage===null?'':`value="${percentage}"`} aria-label="空间导入进度"></progress>`:''}${status==='failed'&&!awaiting&&spatial.error?`<p class="error">${esc(stages[spatial.failureStage]?stages[spatial.failureStage]+'时未完成：':'')}${esc(spatial.error)}</p>`:''}${requestError?`<p class="error" role="status">${esc(requestError)}</p>`:''}<div class="row">${action}${source?`<a class="button quiet" href="${esc(source)}" target="_blank" rel="noopener noreferrer">查看影石来源 ↗</a>`:''}</div></section>`;
 }
 function refreshSpatialPanels(){
   document.querySelectorAll('[data-spatial-message]').forEach(slot=>{
@@ -256,7 +288,7 @@ async function poll(){
   try{
     const previousLatest=photos().at(-1)?._id;
     const nextState=await api('state',historyStateData(),pollToken,{signal:controller.signal});if(!currentRequest())return;
-    state=reconcileHistory(nextState);globalThis.MemoryContact?.refresh();stateReceivedAt=performance.now();stateRoundTripMs=Math.max(0,stateReceivedAt-pollStartedAt);syncFrameSelection();refreshManagedAudio();
+    state=reconcileHistory(nextState);globalThis.MemoryAI?.refreshProactive?.();globalThis.MemoryContact?.refresh();stateReceivedAt=performance.now();stateRoundTripMs=Math.max(0,stateReceivedAt-pollStartedAt);syncFrameSelection();refreshManagedAudio();
     const latest=photos().at(-1)?._id;
     if(latest&&latest!==previousLatest&&(frame||!followFrame)&&!recording&&!draft.audio&&!(frameAudio&&!frameAudio.paused)&&![...document.querySelectorAll('audio')].some(a=>!a.paused))selected=latest;
     failures=0;$('#connection').textContent='● 已连接';$('#syncError').hidden=true;$('#roomName').textContent=state.room.name;

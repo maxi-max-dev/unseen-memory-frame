@@ -29,7 +29,12 @@ test('presence invitation lifecycle and owner controls in Chrome', {
   const origin = `http://127.0.0.1:${server.address().port}`;
   const photo = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="700"><rect width="1000" height="700" fill="#acd2d9"/><circle cx="750" cy="150" r="75" fill="#fff0b5"/><path d="M0 600L300 200L650 650L850 380L1000 600V700H0" fill="#639b80"/></svg>');
   let seq = 0;
-  const event = () => ({ seq: ++seq, eventId: randomUUID(), type: 'presence.dwell', receivedAt: Date.now(), expiresAt: Date.now() + 15000 });
+  const event = (now = Date.now) => {
+    // One sample: two Date.now() calls can cross a millisecond under test load
+    // and accidentally exceed the production validator's strict 15-second TTL.
+    const receivedAt = now();
+    return { seq: ++seq, eventId: randomUUID(), type: 'presence.dwell', receivedAt, expiresAt: receivedAt + 15000 };
+  };
   async function fixture(role = 'frame') {
     const context = await browser.newContext({ viewport: { width: 1180, height: 820 } });
     const page = await context.newPage(), actions = [], errors = [], diagnostics = [];
@@ -44,7 +49,7 @@ test('presence invitation lifecycle and owner controls in Chrome', {
     }, { role });
     await page.route('**/api', route => {
       const request = route.request().postDataJSON(); actions.push(request);
-      const responses = { state: { ...snapshot, serverTime: Date.now() }, receipt: { ok: true }, framePresence: { ok: true }, contactState: { members: [], requests: [] }, aiCapabilities: { text: true, vision: true, asr: true }, aiRealtimeCapabilities: { enabled: false }, logout: { ok: true },
+      const responses = { state: { ...snapshot, serverTime: Date.now() }, receipt: { ok: true }, framePresence: { ok: true }, contactState: { members: [], requests: [] }, aiCapabilities: { text: true, vision: true, asr: true }, aiChat: { answer: '这张照片让您想起了什么？', imageUsed: true, action: null }, aiRealtimeCapabilities: { enabled: false }, logout: { ok: true },
         presenceSensorList: { frames: [{ id: 'frame-one', name: '客厅相框', online: true }], sensors: [{ deviceId: 'living-room-link2', targetFrameId: 'frame-one', active: true, targetAvailable: true }], eventTtlMs: 15000 },
         presenceSensorIssue: { token: 'synthetic-sensor-token-for-ui-test' }, presenceSensorRotate: { token: 'synthetic-rotated-token-for-ui-test' }, presenceSensorRevoke: { ok: true } };
       return route.fulfill({ json: responses[request.action] || {} });
@@ -53,6 +58,14 @@ test('presence invitation lifecycle and owner controls in Chrome', {
     await page.waitForFunction(() => document.querySelector('#caption')?.textContent.includes('家庭照片 2'));
     return { page, context, snapshot, actions, errors, diagnostics, async report(value = event()) { snapshot.presenceEvent = value; await page.evaluate(() => poll()); return value; }, async finish() { assert.deepEqual(errors, []); await context.close(); } };
   }
+  await t.test('fixture clock crossing a millisecond still delivers a valid invitation', async () => {
+    const f = await fixture(); try {
+      // Reading this clock twice used to produce a forbidden 15001 ms lifetime.
+      // Exercise the actual protocol validator and DOM, without waiting on a click timeout.
+      let clock = Date.now(); await f.report(event(() => clock++));
+      assert.equal(await f.page.locator('#presenceAccept').count(), 1, f.diagnostics.join('\n'));
+    } finally { await f.finish(); }
+  });
   await t.test('consent fixes trigger photo; no microphone, upload or AI request before consent', async () => {
     const f = await fixture(); try {
       await f.report(); await f.page.locator('#presenceInvitation').waitFor({ state: 'visible' });
@@ -61,14 +74,44 @@ test('presence invitation lifecycle and owner controls in Chrome', {
       f.snapshot.messages.push({ ...f.snapshot.messages[0], _id: 'm3', title: '新照片 3', createdAt: 3 });
       await f.page.evaluate(() => poll());
       assert.match(await f.page.locator('#caption').textContent(), /新照片 3/);
-      await f.page.locator('#presenceAccept').click(); await f.page.locator('.ai-dialog').waitFor({ state: 'visible' });
+      await f.page.evaluate(() => { const button = document.querySelector('#presenceAccept'); button.click(); button.click(); });
+      await f.page.waitForFunction(() => document.querySelector('#aiMessages')?.textContent.includes('这张照片让您想起了什么？'));
       assert.match(await f.page.locator('#aiPhotos').textContent(), /家庭照片 2/);
-      assert.equal(await f.page.locator('#aiReadPhoto').isChecked(), false);
+      assert.equal(await f.page.locator('#aiPhotoPicker').evaluate(element => element.open), false);
+      assert.equal(await f.page.locator('#aiPhotos img').isVisible(), true);
+      assert.equal(await f.page.locator('#aiPhotoChoice').isVisible(), true);
+      assert.equal(await f.page.locator('#aiReadPhoto').isChecked(), true);
+      const requests = f.actions.filter(item => item.action === 'aiChat'); assert.equal(requests.length, 1);
+      assert.deepEqual(requests[0].data.messageIds, ['m2']); assert.equal(requests[0].data.readPhoto, true);
       assert.equal(await f.page.evaluate(() => microphoneRequests), 0);
+      await f.page.locator('#aiPhotoPicker summary').click();
+      assert.equal(await f.page.locator('#aiMemory').isVisible(), true);
       await f.page.reload(); await f.page.waitForFunction(() => document.querySelector('#caption')?.textContent.includes('新照片 3'));
       assert.equal(await f.page.locator('#presenceInvitation').count(), 0);
       assert.ok(f.diagnostics.some(value => value.includes('duplicate')));
     } finally { await f.finish(); }
+  });
+  for (const reason of ['close and reopen', 'delete photo', 'background']) await t.test('actual UI cancels proactive capability wait on ' + reason, async () => {
+    const f = await fixture(); let release;
+    try {
+      const held = new Promise(resolve => { release = resolve; }); let started; const began = new Promise(resolve => { started = resolve; }); let first = true;
+      await f.page.route('**/api', async route => {
+        if (route.request().postDataJSON().action !== 'aiCapabilities' || !first) return route.fallback();
+        first = false; started(); await held;
+        try { await route.fulfill({ json: { text: true, vision: true, asr: true } }); } catch { /* Cancelled request. */ }
+      });
+      await f.report(); await f.page.locator('#presenceAccept').click(); await began;
+      if (reason === 'close and reopen') {
+        await f.page.locator('#aiClose').click(); await f.page.locator('#aiHomeChat').click();
+        await f.page.locator('#aiQuestion').fill('新窗口的草稿');
+      } else if (reason === 'delete photo') { f.snapshot.messages = []; await f.page.evaluate(() => poll()); }
+      else await f.page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
+      release(); await f.page.evaluate(() => new Promise(resolve => setTimeout(resolve, 60)));
+      assert.equal(f.actions.filter(item => item.action === 'aiChat').length, 0);
+      assert.equal(await f.page.evaluate(() => microphoneRequests), 0);
+      if (reason === 'close and reopen') assert.equal(await f.page.locator('#aiQuestion').inputValue(), '新窗口的草稿');
+      if (reason === 'delete photo') assert.match(await f.page.locator('#aiStatus').textContent(), /照片已不可用/);
+    } finally { release?.(); await f.finish(); }
   });
   await t.test('state response delayed past expiry is consumed without extending the event lifetime', async () => {
     const f = await fixture(); try {

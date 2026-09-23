@@ -18,7 +18,8 @@ function publicSpatial(entry, id, time = Date.now()) {
   return { id, status: expired ? 'failed' : entry.status, stage: expired ? 'expired' : entry.stage,
     progress: entry.progress, error: expired ? '上次空间导入已中断，请重试' : entry.error || '', sourceURL: entry.sourceURL,
     sourceTitle: entry.sourceTitle || '', provider: 'Insta360', bytes: entry.status === 'ready' ? entry.bytes : 0,
-    digest: entry.status === 'ready' ? entry.digest : '', updatedAt: entry.updatedAt };
+    digest: entry.status === 'ready' ? entry.digest : '', updatedAt: entry.updatedAt,
+    ...(expired || entry.status === 'failed' ? { failureStage: expired ? entry.stage : entry.failureStage || '', errorCode: expired ? 'lease_expired' : entry.errorCode || '' } : {}) };
 }
 function createSpatial(store, options = {}) {
   const storage = store.forSpatial(), network = options.network || createNetwork(), clock = options.clock || Date.now;
@@ -102,7 +103,8 @@ function createSpatial(store, options = {}) {
       if (allocatedFile) { try { await deleteFile(allocatedFile); } catch { cleanupFailed = true; } }
       await storage.mutate(roomKey, current => {
         const entry = current?.entries[source.scene]; if (!entry || entry.lease !== lease) return null;
-        current.entries[source.scene] = { ...entry, status: 'failed', stage: 'failed', progress: 0, error,
+        current.entries[source.scene] = { ...entry, status: 'failed', stage: 'failed', failureStage: entry.stage,
+          errorCode: signal.aborted ? 'import_timeout' : e instanceof SpatialError ? e.code || 'import_failed' : 'import_failed', progress: 0, error,
           leaseUntil: 0, updatedAt: clock(), pendingFile: cleanupFailed ? allocatedFile : (allocatedFile ? '' : entry.pendingFile),
           ...(e instanceof SpatialError && e.storageDiagnostic?.event === 'spatial-storage-dns-rejected' ? { storageDiagnostic: e.storageDiagnostic } : {}) };
         return current;

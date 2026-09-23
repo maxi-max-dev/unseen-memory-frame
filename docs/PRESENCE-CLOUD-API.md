@@ -51,7 +51,7 @@
 {"presenceEvent":{"seq":18,"eventId":"...","type":"presence.dwell","receivedAt":1780000000100,"expiresAt":1780000015100}}
 ```
 
-家人/owner、其他家庭/相框、到期/撤销事件均省略 `presenceEvent`。当前相框收到多个事件时只下发序号最大的未过期事件；每次轮询不会消耗事件，由前端持久去重并判断页面/录音/音频/AI等状态。传感器仅触发邀请，老人确认后才打开固定照片的 `MemoryAI.open(messageId)`。
+家人/owner、其他家庭/相框、到期/撤销事件均省略 `presenceEvent`。当前相框收到多个事件时只下发序号最大的未过期事件；每次轮询不会消耗事件，由前端持久去重并判断页面/录音/音频/AI等状态。传感器仅触发邀请；老人明确确认读取照片后，前端调用 `MemoryAI.openFromPresence(messageId)`，对固定照片生成一句文字开场问题，失败回退普通聊天，不自动开麦或朗读。现有手动 `MemoryAI.open(messageId)` 保持手动选择读取方式。详见[确认后首问说明与本地证据](PRESENCE-PROACTIVE-AI.md)。
 
 ## 持久一致性、限流和清理边界
 

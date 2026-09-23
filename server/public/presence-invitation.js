@@ -29,7 +29,7 @@ globalThis.MemoryPresence = (() => {
     if ([...document.querySelectorAll('dialog[open]')].some(dialog => dialog !== invitation?.dialog)) return 'dialog';
     const photo = fixedPhoto ? state?.messages.find(message => message._id === fixedPhoto) : current();
     if (!photo || photo.deleted || photo.type !== 'photo' || !photo.image || !photo.imageURL) return 'no-photo';
-    if (typeof globalThis.MemoryAI?.open !== 'function') return 'ai-unavailable';
+    if (typeof globalThis.MemoryAI?.openFromPresence !== 'function') return 'ai-unavailable';
     return '';
   }
   function close(reason = 'closed') {
@@ -64,7 +64,7 @@ globalThis.MemoryPresence = (() => {
     dialog.id = 'presenceInvitation'; dialog.className = 'presence-invitation';
     dialog.setAttribute('aria-labelledby', 'presenceInvitationTitle');
     dialog.setAttribute('aria-describedby', 'presenceInvitationNote');
-    dialog.innerHTML = '<p class="presence-eyebrow">一起聊聊家里的记忆</p><h2 id="presenceInvitationTitle">想聊聊这张照片吗？</h2><p id="presenceInvitationNote">可以和 AI 慢慢聊。由您决定是否开始。</p><div class="presence-invitation-actions"><button id="presenceAccept" class="primary" type="button">和 AI 聊聊</button><button id="presenceDecline" type="button" autofocus>暂时不用</button></div>';
+    dialog.innerHTML = '<p class="presence-eyebrow">一起聊聊家里的记忆</p><h2 id="presenceInvitationTitle">想聊聊这张照片吗？</h2><p id="presenceInvitationNote">确认后，AI 会读取这张照片，先温和地问您一句。不会自动打开麦克风。</p><div class="presence-invitation-actions"><button id="presenceAccept" class="primary" type="button">和 AI 聊聊</button><button id="presenceDecline" type="button" autofocus>暂时不用</button></div>';
     invitation = { event, photoId: current()._id, token: session.token, dialog, focus: document.activeElement };
     document.body.append(dialog);
     dialog.querySelector('#presenceDecline').onclick = () => close('declined');
@@ -73,9 +73,8 @@ globalThis.MemoryPresence = (() => {
       guard(); const accepted = invitation; if (!accepted) return;
       close('accepted'); log(accepted.event, 'accepted');
       try {
-        await globalThis.MemoryAI.open(accepted.photoId);
-        // open() also checks the session; a closed/cancelled dialog is not success.
-        log(accepted.event, document.querySelector('.ai-dialog[open]') && session?.token === accepted.token && !sessionExpired ? 'ai-opened' : 'ai-not-opened');
+        const result = await globalThis.MemoryAI.openFromPresence(accepted.photoId);
+        log(accepted.event, result?.opened && session?.token === accepted.token && !sessionExpired ? 'ai-opened' : 'ai-not-opened');
       } catch { log(accepted.event, 'ai-open-failed'); toast('暂时未能打开 AI 聊天，请稍后再试'); }
     };
     dialog.showModal(); log(event, 'shown');

@@ -1,0 +1,13 @@
+/build*/
+/.private/
+*.private.json
+*.local.json
+*.env
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.zip
+*.rar
+node_modules/

@@ -76,7 +76,7 @@ async function resolveStorage(url, lookup, signal, operation, diagnostic = item 
       return addresses;
     }, signal);
   } catch (error) {
-    if (error instanceof SpatialError && error.message === '模型资源地址未通过安全检查') {
+    if (error instanceof SpatialError && (error.code === 'unsafe_dns' || error.message === '模型资源地址未通过安全检查')) {
       // Only the authenticated SDK endpoint hostname and aggregate categories are logged.
       // Never include addresses, URL paths/queries, cloud file IDs or raw SDK errors.
       const safeDiagnostic = { event: 'spatial-storage-dns-rejected', operation,
