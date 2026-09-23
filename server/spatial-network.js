@@ -8,7 +8,9 @@ const { pipeline } = require('node:stream/promises');
 const crypto = require('node:crypto');
 const { parseShare } = require('./public/spatial-link');
 
-const ASSET_HOSTS = new Set(['insta360-app-hz.oss-cn-hangzhou.aliyuncs.com']);
+// Both exact hosts were observed in user-authorized Insta360 share pages.
+// A provider CDN is still subject to every redirect, DNS and file-type check.
+const ASSET_HOSTS = new Set(['insta360-app-hz.oss-cn-hangzhou.aliyuncs.com', 'p1-app.insta360.com']);
 class SpatialError extends Error { constructor(message, status = 400, code = '') { super(message); this.status = status; this.code = code; } }
 const reject = (message, code) => { throw new SpatialError(message, 400, code); };
 function checkedURL(input) {
@@ -133,17 +135,32 @@ function parsePage(html, scene) {
 function parseCamera(input) {
   let cameras; try { cameras = JSON.parse(input); } catch { return undefined; }
   if (!Array.isArray(cameras) || cameras.length > 5000) return undefined;
-  const candidates = [...cameras.filter(x => /_cam1_up$/.test(x?.img_name)), ...cameras.filter(x => /_cam1_center$/.test(x?.img_name)), ...cameras];
-  for (const camera of candidates) {
   const vector = (value, limit) => Array.isArray(value) && value.length === 3 && value.every(x => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) <= limit);
-  if (!camera || !vector(camera.position, 100000) || !Array.isArray(camera.rotation) || camera.rotation.length !== 3 || !camera.rotation.every(row => vector(row, 1.001))) continue;
-  if (![camera.width, camera.height].every(x => Number.isInteger(x) && x > 0 && x <= 8192) || ![camera.fx, camera.fy].every(x => Number.isFinite(x) && x >= 1 && x <= 20000)) continue;
-  const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0), r = camera.rotation;
-  if (r.some((a, i) => r.some((b, j) => Math.abs(dot(a, b) - Number(i === j)) > 0.01))) continue;
-  const fov = 2 * Math.atan(camera.height / (2 * camera.fy)) * 180 / Math.PI;
-  if (fov < 20 || fov > 140) continue;
-  return { position: camera.position, forward: r.map(row => row[2]), up: r.map(row => -row[1]), fov: Math.max(35, Math.min(75, fov)) };
+  const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+  const valid = [];
+  for (const camera of cameras) {
+    if (!camera || !vector(camera.position, 100000) || !Array.isArray(camera.rotation) || camera.rotation.length !== 3 || !camera.rotation.every(row => vector(row, 1.001))) continue;
+    if (![camera.width, camera.height].every(x => Number.isInteger(x) && x > 0 && x <= 8192) || ![camera.fx, camera.fy].every(x => Number.isFinite(x) && x >= 1 && x <= 20000)) continue;
+    const r = camera.rotation;
+    if (r.some((a, i) => r.some((b, j) => Math.abs(dot(a, b) - Number(i === j)) > 0.01))) continue;
+    // A reflection is orthogonal too, but is not a valid camera rotation.
+    const determinant = r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1]) - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0]) + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0]);
+    if (determinant <= 0) continue;
+    const fov = 2 * Math.atan(camera.height / (2 * camera.fy)) * 180 / Math.PI;
+    if (fov < 20 || fov > 140) continue;
+    const name = typeof camera.img_name === 'string' ? /^(.*)_cam1_(center|up)$/.exec(camera.img_name) : null;
+    valid.push({ frame: name?.[1], direction: name?.[2], view: {
+      position: camera.position, forward: r.map(row => row[2]), up: r.map(row => -row[1]), fov: Math.max(35, Math.min(75, fov))
+    } });
   }
-  return undefined;
+  // Keep the first usable capture position. Within that capture, choose the
+  // front center/up view nearest the horizon in the provider's Y-down space.
+  // This retains tilted-camera scenes without forcing upright scenes skyward.
+  const first = valid.find(candidate => candidate.frame !== undefined);
+  if (!first) return valid[0]?.view;
+  const candidates = valid.filter(candidate => candidate.frame === first.frame);
+  candidates.sort((a, b) => Math.abs(a.view.forward[1]) - Math.abs(b.view.forward[1]) || Number(a.direction === 'up') - Number(b.direction === 'up'));
+  return candidates[0].view;
 }
+
 module.exports = { SpatialError, shareURL, assetURL, publicAddress, resolvePublic, pinnedLookup, createNetwork, parsePage, parseCamera };

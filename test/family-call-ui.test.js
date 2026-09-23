@@ -114,6 +114,15 @@ test('caller rings only after explicit confirmation and opens no microphone befo
   assert.equal(f.$('callClose').textContent, '挂断并关闭');
 });
 
+test('accepted call pauses the frame player even when it is not attached to the DOM', async () => {
+  const f = fixture(); let pauses = 0;
+  f.context.frameAudio = { pause() { pauses++; } };
+  await f.dial(); assert.equal(pauses, 0); assert.equal(f.microphoneCalls(), 0);
+  f.server.call = { ...f.server.call, status: 'accepted', revision: 2 };
+  await f.context.MemoryCall.refresh(true); await settle();
+  assert.equal(pauses, 1); assert.equal(f.microphoneCalls(), 1);
+});
+
 test('incoming ringing never opens a microphone until the recipient actively accepts', async () => {
   const f = fixture(); f.server.call = f.makeCall({ direction: 'incoming' }); await f.context.MemoryCall.refresh(true);
   assert.equal(f.microphoneCalls(), 0); assert.equal(f.$('familyCallNotice').hidden, false);
@@ -460,4 +469,84 @@ test('reject ownership verification shares the original four-second deadline and
   const proof = f.callRequests('callState').at(-1); timeouts[0].fn(); await settle();
   assert.equal(proof.signal.aborted, true); assert.equal(f.context.MemoryCall.hasPendingCancellations(), true);
   assert.equal(f.timers.size, 0); assert.equal(f.microphoneCalls(), 0);
+});
+
+test('pending family recording permission and active or stopping AI realtime block start, accept and resume', async () => {
+  for (const blocked of ['recording-permission', 'realtime']) {
+    const f = fixture();
+    if (blocked === 'recording-permission') f.context.recordingStarting = true;
+    else f.context.MemoryRealtime = { busy: () => true };
+    await f.context.MemoryCall.open('member-b'); await f.$('callStart').click();
+    assert.equal(f.callRequests('callStart').length, 0, blocked);
+    f.server.call = f.makeCall({ direction: 'incoming', canControl: false });
+    await f.context.MemoryCall.refresh(true); await f.$('callAccept').click();
+    assert.equal(f.callRequests('callAccept').length, 0, blocked);
+    f.server.call = f.makeCall({ direction: 'incoming', status: 'accepted', revision: 2 });
+    await f.context.MemoryCall.refresh(true); await f.$('callResume').click(); await settle();
+    assert.equal(f.callRequests('callIce').length, 0, blocked); assert.equal(f.microphoneCalls(), 0, blocked);
+    assert.match(f.$('callStatus').textContent, /录音授权|AI 实时/);
+  }
+});
+
+test('a media conflict appearing during ICE lookup prevents a later microphone request', async () => {
+  const lookup = deferred(), f = fixture({ api: (request, normal) => request.action === 'callIce' ? lookup.promise : normal(request) });
+  await f.acceptOutgoing(); f.context.recordingStarting = true;
+  lookup.resolve({ iceTransportPolicy: 'relay', iceServers: [{ urls: 'turn:relay.example.test' }], expiresAt: Date.now() + 100000 }); await settle();
+  assert.equal(f.microphoneCalls(), 0); assert.equal(f.peers.length, 0);
+  assert.equal(f.callRequests('callEnd')[0].data.reason, 'failed');
+});
+
+test('a media conflict during microphone permission stops the late stream before RTC creation', async () => {
+  const permission = deferred(), f = fixture({ microphone: () => permission.promise }); await f.acceptOutgoing();
+  f.context.MemoryRealtime = { busy: () => true }; const late = new f.Stream([f.track()]); permission.resolve(late); await settle();
+  assert.equal(late.getTracks()[0].readyState, 'ended'); assert.equal(f.peers.length, 0);
+  assert.equal(f.callRequests('callEnd')[0].data.reason, 'failed');
+});
+
+test('offline blocks new calling and immediately releases active capture while preserving end retry', async () => {
+  let offline = false;
+  const f = fixture({ api: (request, normal) => { if (offline && request.action === 'callEnd') throw Error('offline'); return normal(request); } });
+  await f.acceptOutgoing(); const local = f.peers[0].localTracks[0];
+  f.context.navigator.onLine = false; offline = true; f.windowEvents.offline(); await settle();
+  assert.equal(local.readyState, 'ended'); assert.equal(f.peers[0].closes, 1);
+  assert.equal(f.context.MemoryCall.hasPendingCancellations(), true); assert.match(f.$('callStatus').textContent, /尚未确认/);
+  offline = false; f.context.navigator.onLine = true; await f.context.MemoryCall.refresh(true);
+  assert.equal(f.context.MemoryCall.hasPendingCancellations(), false); assert.equal(f.microphoneCalls(), 1);
+  const blocked = fixture(); blocked.context.navigator.onLine = false;
+  await blocked.context.MemoryCall.open('member-b'); await blocked.$('callStart').click();
+  assert.equal(blocked.callRequests('callStart').length, 0); assert.match(blocked.$('callStatus').textContent, /网络已断开/);
+});
+
+test('offline during pending microphone permission disposes a late stream without reconnecting', async () => {
+  const permission = deferred(), f = fixture({ microphone: () => permission.promise }); await f.acceptOutgoing();
+  f.context.navigator.onLine = false; f.windowEvents.offline();
+  const late = new f.Stream([f.track()]); permission.resolve(late); await settle();
+  assert.equal(late.getTracks()[0].readyState, 'ended'); assert.equal(f.peers.length, 0);
+  f.context.navigator.onLine = true; await f.context.MemoryCall.refresh(true); await settle();
+  assert.equal(f.microphoneCalls(), 1);
+});
+
+test('a permission failure while refreshing stops capture without trusting stale accepted state', async () => {
+  let revoked = false;
+  const f = fixture({ api: (request, normal) => {
+    if (revoked) throw Object.assign(Error('session revoked'), { status: 401 });
+    return normal(request);
+  } });
+  await f.acceptOutgoing(); revoked = true; await f.context.MemoryCall.refresh(true); await settle();
+  assert.equal(f.peers[0].localTracks[0].readyState, 'ended'); assert.equal(f.peers[0].closes, 1);
+  assert.equal(f.microphoneCalls(), 1); assert.match(f.$('callStatus').textContent, /麦克风已关闭/);
+});
+
+test('an accepted state arriving after its remaining lifetime never starts microphone capture', async () => {
+  const delayed = deferred(); let wait = false, snapshot;
+  const f = fixture({ api: (request, normal) => {
+    if (wait && request.action === 'callState') { snapshot = normal(request); return delayed.promise; }
+    return normal(request);
+  } });
+  await f.dial();
+  f.server.call = { ...f.server.call, status: 'accepted', revision: 2, expiresAt: Date.now() + 500 };
+  wait = true; const pending = f.context.MemoryCall.refresh(true); await settle();
+  f.advance(1000); delayed.resolve(snapshot); await pending; await settle();
+  assert.equal(f.microphoneCalls(), 0); assert.equal(f.peers.length, 0); assert.equal(f.callRequests('callIce').length, 0);
+  assert.match(f.$('callStatus').textContent, /到期/); assert.equal(f.callRequests('callEnd').length, 1);
 });

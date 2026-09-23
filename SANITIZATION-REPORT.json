@@ -1,7 +1,7 @@
 {
   "format": 1,
   "passed": true,
-  "scannedFiles": 191,
+  "scannedFiles": 201,
   "rules": [
     "deployment-environment",
     "historical-login",
@@ -61,6 +61,11 @@
     },
     {
       "path": "test/message-history.test.js",
+      "category": "external-scene-fixture",
+      "count": 1
+    },
+    {
+      "path": "test/spatial-http-browser.test.js",
       "category": "external-scene-fixture",
       "count": 1
     },

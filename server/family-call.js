@@ -12,6 +12,13 @@ const idOK = value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test
 const identity = s => s.account || s._id;
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const object = value => value && typeof value === 'object' && !Array.isArray(value);
+function chargeBudget(budget, id, message) {
+  const entry = budget.senders.find(item => item.id === id);
+  if (budget.count >= 12 || (entry?.count || 0) >= 4) fail(message, 429);
+  budget.count++;
+  if (entry) entry.count++;
+  else budget.senders.push({ id, count: 1 });
+}
 
 // Configuration is administrator supplied, never accepted from API bodies. No
 // public ICE defaults and no static browser credentials. The shared secret stays
@@ -119,7 +126,12 @@ function createFamilyCall(store, { allowed, clock = Date.now, env = process.env 
     // This compact tombstone ledger preserves start idempotency after a call has
     // left the 20-item visible history. Room rate limits bound it to <=1,740/day.
     const starts = (old?.starts || []).filter(item => item.createdAt > time - RETENTION);
-    const budget = old?.budget && old.budget.since > time - BUDGET_WINDOW ? old.budget : { since: time, count: 0, senders: {} };
+    const previous = old?.budget && old.budget.since > time - BUDGET_WINDOW ? old.budget : null;
+    // CloudBase updates flatten nested objects and omit empty maps. A whole array
+    // replaces sender counters, including [] when the window expires. Preserve
+    // legacy in-window usage while migrating; never carry it into a new window.
+    const senders = Array.isArray(previous?.senders) ? previous.senders : Object.entries(previous?.senders || {}).map(([id, count]) => ({ id, count }));
+    const budget = { since: previous?.since ?? time, count: previous?.count ?? 0, senders };
     return { _id: 'rtc_' + room, kind: 'familyCall', room, calls, starts, budget };
   }
 
@@ -256,9 +268,9 @@ function createFamilyCall(store, { allowed, clock = Date.now, env = process.env 
         const call = record.calls.find(item => item.startKey === startKey);
         if ((entry?.callerSession && entry.callerSession !== s._id) || (call && call.callerSession !== s._id)) fail('请在发起呼叫的设备取消', 403);
         if (!entry) {
-          if (record.budget.count >= 12 || (record.budget.senders[me] || 0) >= 4) fail('取消请求过于频繁，请稍后重试', 429);
+          chargeBudget(record.budget, me, '取消请求过于频繁，请稍后重试');
           entry = { key: startKey, targetId: null, callerSession: s._id, createdAt: currentTime, cancelled: true };
-          record.starts.push(entry); record.budget.count++; record.budget.senders[me] = (record.budget.senders[me] || 0) + 1;
+          record.starts.push(entry);
         } else entry.cancelled = true;
         if (call && ACTIVE.has(call.status)) record.calls[record.calls.indexOf(call)] = endCall(call, 'ended', 'cancelled', currentTime);
         return record;
@@ -274,14 +286,13 @@ function createFamilyCall(store, { allowed, clock = Date.now, env = process.env 
         const active = record.calls.filter(call => ACTIVE.has(call.status));
         if (active.some(call => [call.from.id, call.to.id].some(id => id === me || id === target.id))) fail('你或这位家人已有通话，请结束后重试', 409);
         if (active.length >= MAX_ACTIVE) fail('家庭同时通话已达上限，请稍后再试', 429);
-        if (record.budget.count >= 12 || (record.budget.senders[me] || 0) >= 4) fail('呼叫过于频繁，请 10 分钟后再试', 429);
+        chargeBudget(record.budget, me, '呼叫过于频繁，请 10 分钟后再试');
         while (record.calls.length >= MAX_HISTORY) {
           const index = record.calls.findIndex(call => !ACTIVE.has(call.status));
           if (index < 0) fail('家庭通话记录已满，请稍后再试', 429);
           record.calls.splice(index, 1);
         }
         record.starts.push({ key: startKey, targetId: target.id, callerSession: s._id, createdAt: currentTime });
-        record.budget.count++; record.budget.senders[me] = (record.budget.senders[me] || 0) + 1;
         const from = family.members.get(me), empty = () => ({ description: null, candidates: [], iceComplete: false });
         record.calls.push({ id: 'call_' + startKey.slice(0, 40), startKey, from: { id: me, name: from.name }, to: { id: target.id, name: target.name },
           callerSession: s._id, calleeSession: null, status: 'ringing', createdAt: currentTime, updatedAt: currentTime,

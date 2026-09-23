@@ -68,6 +68,7 @@ function authScreen({resume=false}={}){
 }
 
 async function logoutSession(){
+  globalThis.MemoryCall?.dispose();globalThis.MemoryFramePresentation?.exit();
   if(sending)return toast('正在寄出记忆，请等待完成后再退出');
   if(recording)return toast('请先结束录音，保存草稿后再退出');
   const button=$('#logout');if(button?.disabled)return;if(button)button.disabled=true;

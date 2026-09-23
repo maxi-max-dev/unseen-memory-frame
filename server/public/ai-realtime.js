@@ -43,13 +43,13 @@ globalThis.MemoryRealtime = (() => {
     }
     function abandon(run) { if (active === run) void stop('已停止，麦克风已关闭。'); else release(run); }
     async function heartbeat(run) {
-      if (!live(run)) return stop('已停止，麦克风已关闭。');
+      if (!live(run)) return abandon(run);
       try {
         const result = await request('aiRealtimeStatus', { requestId: run.id }, { signal: run.controller.signal });
-        if (!live(run)) return;
+        if (!live(run)) return abandon(run);
         if (result.status !== 'active') return stop('这段实时对话已结束，麦克风已关闭。');
         run.heartbeatTimer = setTimeout(() => heartbeat(run), 10000);
-      } catch { if (live(run)) void stop('实时连接中断，已关闭麦克风。请重新开始。'); }
+      } catch { if (live(run)) void stop('实时连接中断，已关闭麦克风。请重新开始。'); else abandon(run); }
     }
     async function start() {
       if (active || stopping || stopState.run || !permitted()) return;
@@ -121,8 +121,9 @@ globalThis.MemoryRealtime = (() => {
     const old = currentClient; currentClient = null; old?.detach(); void old?.stop(); panel?.close(); panel?.remove(); panel = null;
   }
   async function open() {
+    if (globalThis.MemoryCall?.busy?.()) return toast('请先结束家人通话或关闭通话窗口');
     if (!session || sessionExpired) return toast('请先登录家庭');
-    if (recording) return toast('请先结束正在录给家人的原声');
+    if (recording || (typeof recordingStarting !== 'undefined' && recordingStarting)) return toast('请先结束正在录给家人的原声或等待中的录音授权');
     const origin = document.activeElement, resumeText = globalThis.MemoryAI?.suspendForRealtime() || false;
     dispose(); focusOrigin = origin;
     const token = session.token, epoch = ++openEpoch;
@@ -130,7 +131,7 @@ globalThis.MemoryRealtime = (() => {
     panel.innerHTML = '<div class="row between ai-dialog-heading"><h2 id="aiRealtimeTitle">和 AI 实时聊聊</h2><button id="realtimeClose" type="button" aria-label="关闭实时语音">关闭 ×</button></div><p>连接后可以像电话一样边听边说，开口打断 AI。</p><p id="realtimeAvailability" class="ai-realtime-note" role="status">正在检查实时语音是否可用…</p><p class="muted">点击开始后才会使用麦克风。声音将交给实时语音服务处理；本应用不保存通话录音，也不会自动给家人发送留言。</p><div class="row"><button id="realtimeStart" aria-describedby="realtimeAvailability realtimeStatus" class="primary" type="button" disabled>开始实时对话</button><button id="realtimeMute" type="button" aria-pressed="false" disabled>麦克风静音</button><button id="realtimeEnd" class="red" type="button" disabled>挂断</button></div><p id="realtimeStatus" role="status" aria-live="polite">麦克风未开启</p><button id="realtimeText" type="button">先用文字和 AI 聊聊</button><p class="muted">离开页面、切到后台、关闭窗口会结束对话。每次最多 10 分钟。语音不会继承文字聊天或照片内容。</p>';
     document.body.append(panel); panel.showModal();
     const current = () => panel?.open && openEpoch === epoch && session?.token === token && !sessionExpired;
-    const valid = () => current() && !document.hidden;
+    const valid = () => current() && !document.hidden && !recording && !(typeof recordingStarting !== 'undefined' && recordingStarting) && !globalThis.MemoryCall?.busy?.();
     let enabled = false;
     if (!pendingStops.has(token)) pendingStops.set(token, {});
     const client = createClient({
@@ -167,7 +168,7 @@ globalThis.MemoryRealtime = (() => {
     element('realtimeClose').onclick = close; panel.addEventListener('cancel', event => { event.preventDefault(); close(); });
     element('realtimeText').textContent = resumeText ? '返回文字聊天（内容已保留）' : '先用文字和 AI 聊聊';
     element('realtimeText').onclick = () => { const origin = focusOrigin; dispose(); if (!resumeText && origin?.isConnected) origin.focus?.({ preventScroll: true }); void globalThis.MemoryAI?.resume(); };
-    element('realtimeStart').onclick = () => { if (enabled && valid()) { globalThis.speechSynthesis?.cancel(); document.querySelectorAll('audio').forEach(audio => audio.pause()); void client.start(); } };
+    element('realtimeStart').onclick = () => { if (enabled && valid()) { globalThis.speechSynthesis?.cancel(); document.querySelectorAll('audio').forEach(audio => audio.pause()); if (typeof frameAudio !== 'undefined') frameAudio?.pause(); void client.start(); } };
     element('realtimeEnd').onclick = () => client.stop(); element('realtimeMute').onclick = () => client.mute();
     const capRequest = new AbortController(); capabilityController = capRequest;
     const timer = setTimeout(() => capRequest.abort(), 12000);

@@ -73,7 +73,8 @@ test('presence invitation lifecycle and owner controls in Chrome', {
       assert.equal(f.actions.some(item => ['aiChat', 'aiTranscribe', 'aiRealtimeStart', 'upload'].includes(item.action)), false);
       f.snapshot.messages.push({ ...f.snapshot.messages[0], _id: 'm3', title: '新照片 3', createdAt: 3 });
       await f.page.evaluate(() => poll());
-      assert.match(await f.page.locator('#caption').textContent(), /新照片 3/);
+      assert.match(await f.page.locator('#caption').textContent(), /家庭照片 2/);
+      assert.equal(await f.page.evaluate(() => state.messages.some(item => item._id === 'm3')), true);
       await f.page.evaluate(() => { const button = document.querySelector('#presenceAccept'); button.click(); button.click(); });
       await f.page.waitForFunction(() => document.querySelector('#aiMessages')?.textContent.includes('这张照片让您想起了什么？'));
       assert.match(await f.page.locator('#aiPhotos').textContent(), /家庭照片 2/);
@@ -102,7 +103,7 @@ test('presence invitation lifecycle and owner controls in Chrome', {
       });
       await f.report(); await f.page.locator('#presenceAccept').click(); await began;
       if (reason === 'close and reopen') {
-        await f.page.locator('#aiClose').click(); await f.page.locator('#aiHomeChat').click();
+        await f.page.locator('#aiClose').click(); await f.page.locator('#frameMenu summary').click(); await f.page.locator('#aiHomeChat').click();
         await f.page.locator('#aiQuestion').fill('新窗口的草稿');
       } else if (reason === 'delete photo') { f.snapshot.messages = []; await f.page.evaluate(() => poll()); }
       else await f.page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
@@ -150,7 +151,7 @@ test('presence invitation lifecycle and owner controls in Chrome', {
     'original audio': () => { frameAudio = new Audio(); frameAudio.dataset.message = 'm2'; Object.defineProperty(frameAudio, 'paused', { value: false }); },
     'text AI': () => MemoryAI.open(),
     'realtime AI': () => MemoryRealtime.open(),
-    'family call': () => { globalThis.MemoryCall = { busy: () => true }; },
+    'family call': () => { globalThis.MemoryCall = { ...globalThis.MemoryCall, busy: () => true }; },
     hidden: () => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); },
     'night clock': () => { localDisplay.night = true; Date.prototype.getHours = () => 23; applyLocalDisplay(); }
   };

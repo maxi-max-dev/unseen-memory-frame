@@ -52,6 +52,7 @@ test('isolated browser: login, narrow chat, keyboard, realtime fallback and capa
           login: { token: 'ui-fixture-only', room: 'ui-fixture', role: 'owner', name: '测试家人', username: 'fixture01' },
           state: { room: { name: '界面验收家庭' }, members: [], people: [], receipts: [], messages: [], serverTime: Date.now(), messagePage: { total: 0, hasMore: false, nextCursor: null } },
           contactState: { members: [], requests: [] },
+          callState: { capabilities: { enabled: false, reason: '家庭语音通话尚未启用' }, members: [], calls: [] },
           framePresence: { ok: true },
           aiCapabilities: { text: true, vision: true, asr: true },
           aiRealtimeCapabilities: { enabled: realtimeMode !== 'disabled', provider: realtimeMode === 'unknown' ? 'unknown' : 'tencent-trtc', reason: 'TRTC secret configuration missing (fixture)' },
@@ -122,10 +123,10 @@ test('isolated browser: login, narrow chat, keyboard, realtime fallback and capa
       assert.equal(await page.locator('#realtimeEnd').isDisabled(), true);
       await page.keyboard.press('Escape');
       await context.addInitScript(() => localStorage.setItem('memory-session-frame', JSON.stringify({ token: 'ui-frame-fixture-only', room: 'ui-fixture', role: 'frame' })));
-      await page.goto(origin + '/frame'); await visible('#aiHomeChat');
+      await page.goto(origin + '/frame'); await page.locator('#frameMenu summary').click(); await visible('#aiHomeChat');
       await page.locator('#aiHomeChat').click(); await visible('#aiQuestion');
       await page.keyboard.press('Escape');
-      realtimeMode = 'disabled'; await page.locator('#aiHomeLive').click(); await visible('#realtimeText');
+      realtimeMode = 'disabled'; await page.locator('#frameMenu summary').click(); await page.locator('#aiHomeLive').click(); await visible('#realtimeText');
       await page.waitForFunction(() => document.querySelector('#realtimeAvailability').textContent.includes('尚未开通'));
       assert.equal(await page.locator('#realtimeStart').isDisabled(), true);
       assert.deepEqual(forbidden, []); assert.deepEqual(errors, []);

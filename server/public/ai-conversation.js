@@ -22,6 +22,8 @@ globalThis.MemoryAI = (() => {
     suspended = true; dialog.close(); dialog.remove(); return true;
   }
   async function resume() {
+    if (globalThis.MemoryCall?.busy?.()) return toast('请先结束家人通话或关闭通话窗口');
+    if (recording || (typeof recordingStarting !== 'undefined' && recordingStarting)) return toast('请先结束正在录给家人的原声或等待中的录音授权');
     if (!suspended || identity !== session?.token || sessionExpired) return open();
     globalThis.MemoryRealtime?.dispose(); suspended = false; document.body.append(dialog); dialog.showModal();
     status('已返回文字聊天，原有内容已保留。'); el('aiQuestion').focus?.();
@@ -98,7 +100,7 @@ globalThis.MemoryAI = (() => {
   }
   async function record() {
     if (capturing) return finishVoice(); if (busy) return;
-    if (recording) return status('请先结束正在录给家人的原声。');
+    if (recording || (typeof recordingStarting !== 'undefined' && recordingStarting)) return status('请先结束正在录给家人的原声或等待中的录音授权。');
     const generation = ++epoch; busy = true; globalThis.speechSynthesis?.cancel(); update(); status('请允许麦克风，录音最长 60 秒。');
     recorder = MemoryVoice.create({ onTimeout: finishVoice });
     try { const started = await recorder.start(); if (active(generation) && started) { capturing = true; status('正在录音，最长 60 秒。说完后点击结束录音。'); } }
@@ -128,8 +130,9 @@ globalThis.MemoryAI = (() => {
     } finally { if (active(generation)) { checkingCaps = false; update(); } }
   }
   async function openConversation(messageId = '', fromPresence = false) {
+    if (globalThis.MemoryCall?.busy?.()) return toast('请先结束家人通话或关闭通话窗口');
     if (!session || sessionExpired) return toast('请先登录家庭');
-    if (recording) return toast('请先结束正在录给家人的原声');
+    if (recording || (typeof recordingStarting !== 'undefined' && recordingStarting)) return toast('请先结束正在录给家人的原声或等待中的录音授权');
     const origin = document.activeElement; dispose(); focusOrigin = origin; identity = session.token; caps = null;
     dialog = document.createElement('dialog'); dialog.className = 'ai-dialog'; dialog.setAttribute('aria-labelledby', 'aiTitle');
     const run = fromPresence ? { dialog, token: identity, room: session.room, photoId: messageId, image: presencePhoto(messageId)?.image } : null;
@@ -220,7 +223,7 @@ globalThis.MemoryAI = (() => {
     if (!button) { button = document.createElement('button'); button.id = 'openAI'; button.textContent = 'AI 聊天'; document.querySelector('#settings').before(button); }
     button.hidden = false; button.onclick = () => open(frame ? current()?._id : '');
     if (!document.querySelector('#aiHomeEntry')) {
-      const host = document.querySelector(frame ? '#app .subheading' : '#familyHome .subheading');
+      const host = document.querySelector(frame ? '#app .subheading' : '#familyHome .home-actions') || document.querySelector('#familyHome .subheading');
       if (host) {
         const card = document.createElement('section'); card.id = 'aiHomeEntry'; card.className = 'ai-home-entry'; card.setAttribute('aria-label', 'AI 聊天入口');
         card.innerHTML = '<div><strong>有话想说，和 AI 聊聊</strong><p>聊聊今天，也可以一起看看家里的照片。</p></div><div class="row"><button id="aiHomeChat" class="primary" type="button">和 AI 聊天</button><button id="aiHomeLive" type="button">实时语音</button></div>';

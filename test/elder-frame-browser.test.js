@@ -45,7 +45,7 @@ test('elder tablet layout and isolated family preview', { skip: !process.env.AI_
         await page.locator('#listen').evaluate(el=>{el.textContent='Ⅱ 暂停原声'});await overflow('#listen');await page.locator('#listen').evaluate(el=>{el.textContent='▶ 听原声'});
         await page.locator('#frameMenu summary').click();await page.locator('#settings').click();await page.locator('#modal').waitFor({state:'visible'});await page.locator('#closeModal').click();
         if(screenshots)await page.screenshot({path:path.join(screenshots,`frame-${width}.png`),fullPage:true});
-        await page.locator('#aiHomeLive').click();await page.waitForFunction(()=>document.querySelector('#realtimeStart')?.disabled);await overflow('.ai-realtime-dialog');await page.keyboard.press('Escape');
+        await page.locator('#frameMenu summary').click();await page.locator('#aiHomeLive').click();await page.waitForFunction(()=>document.querySelector('#realtimeStart')?.disabled);await overflow('.ai-realtime-dialog');await page.keyboard.press('Escape');
       }else{
         const initial=await page.locator('#caption').textContent();actions.length=0;
         await page.locator('#openFramePreview').click();await page.locator('#familyFramePreview').waitFor({state:'visible'});await overflow('#familyFramePreview');

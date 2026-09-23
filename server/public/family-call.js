@@ -16,6 +16,12 @@ globalThis.MemoryCall = (() => {
     if (!globalThis.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) return '此浏览器不支持当前语音通话，请换用支持 WebRTC 的浏览器。';
     return '';
   }
+  function mediaBlocked() {
+    if (navigator.onLine === false) return '网络已断开，请恢复连接后再呼叫。';
+    if ((typeof recording !== 'undefined' && recording) || (typeof recordingStarting !== 'undefined' && recordingStarting)) return '请先结束正在录给家人的原声或等待中的录音授权，再继续通话。';
+    if (globalThis.MemoryRealtime?.busy()) return '请先挂断 AI 实时对话并确认结束，再与家人通话。';
+    return '';
+  }
   function ensure() {
     if (dialog) return;
     dialog = document.createElement('dialog'); dialog.id = 'familyCallDialog'; dialog.className = 'family-call-dialog'; dialog.setAttribute('aria-labelledby', 'callTitle');
@@ -30,13 +36,19 @@ globalThis.MemoryCall = (() => {
     notice = document.createElement('button'); notice.id = 'familyCallNotice'; notice.type = 'button'; notice.hidden = true; notice.setAttribute('aria-live', 'polite'); notice.onclick = () => open(); document.body.append(notice);
   }
   async function request(action, data, token = identity, observe) {
+    const monotonic = () => globalThis.performance?.now?.() ?? Date.now(), started = monotonic();
     const controller = new AbortController(); controllers.add(controller);
     let timer, onAbort;
     const stopped = new Promise((resolve, reject) => {
       onAbort = () => reject(Object.assign(new Error('通话请求已停止或超时。'), { name: 'AbortError' }));
       controller.signal.addEventListener('abort', onAbort, { once: true }); timer = setTimeout(() => controller.abort(), 12000);
     });
-    try { return await Promise.race([Promise.resolve(api(action, data, token, { signal: controller.signal })).then(result => { observe?.(result); return result; }), stopped]); }
+    try { return await Promise.race([Promise.resolve(api(action, data, token, { signal: controller.signal })).then(result => {
+      observe?.(result);
+      // Include the full round trip conservatively: slow responses must not extend
+      // the server's ringing or call deadline on this device.
+      return Number.isFinite(result?.serverTime) ? { ...result, serverTime: result.serverTime + Math.max(0, monotonic() - started) } : result;
+    }), stopped]); }
     finally { clearTimeout(timer); controller.signal.removeEventListener('abort', onAbort); controllers.delete(controller); }
   }
   const pendingMessage = '本机通话与麦克风已关闭，服务器尚未确认结束；恢复连接后将重试。';
@@ -155,7 +167,7 @@ globalThis.MemoryCall = (() => {
         const resume = button('确认继续这次语音通话', () => {
           if (!dialog?.open || !call) return;
           if (!canStart(identity)) return status('上次呼叫的结束或取消仍待服务器确认，请稍后重试。');
-          if (typeof recording !== 'undefined' && recording) return status('请先结束原声录音，再继续通话。');
+          const blocked = mediaBlocked(); if (blocked) return status(blocked);
           mediaIntent.add(call.id); render(); if (call.status !== 'ringing') begin(call);
         }, busy || !capabilities?.enabled || Boolean(unsupported())); resume.id = 'callResume'; box.append(resume);
       }
@@ -197,7 +209,10 @@ globalThis.MemoryCall = (() => {
       if (!call && !dialog?.open && (next.direction === 'outgoing' || next.status !== 'ringing')) { render(); return; }
       if (call && call.id !== next.id) return;
       if (call?.revision > next.revision) return;
-      call = next; setDeadline(next, result.serverTime);
+      call = next;
+      const expires = next.status === 'ringing' ? next.ringExpiresAt : next.expiresAt;
+      if (LIVE.has(next.status) && Number.isFinite(expires) && expires <= (Number.isFinite(result.serverTime) ? result.serverTime : Date.now())) return end('hangup', '呼叫或通话已到期。');
+      setDeadline(next, result.serverTime);
       if (!LIVE.has(next.status)) { end('hangup', labels[next.status] || '通话已结束。', false); return; }
       render();
       if (next.status !== 'ringing' && next.canControl && dialog?.open && !document.hidden && mediaIntent.has(next.id)) {
@@ -218,7 +233,7 @@ globalThis.MemoryCall = (() => {
   async function initiate() {
     if (busy || call || !capabilities?.enabled || unsupported()) return;
     if (!canStart(identity)) return status('上次呼叫的结束或取消仍待服务器确认，请稍后重试。');
-    if (typeof recording !== 'undefined' && recording) return status('请先结束正在录给家人的原声，再发起通话。');
+    const blocked = mediaBlocked(); if (blocked) return status(blocked);
     stopReason = '';
     const targetId = el('callRecipient')?.value;
     if (!members.some(member => member.id === targetId)) return status('请选择真实家庭成员。');
@@ -231,7 +246,7 @@ globalThis.MemoryCall = (() => {
   async function respond(action) {
     if (busy || !call || call.direction !== 'incoming' || call.status !== 'ringing') return;
     if (action === 'callAccept' && !canStart(identity)) return status('上次呼叫的结束或取消仍待服务器确认，请稍后重试。');
-    if (action === 'callAccept' && typeof recording !== 'undefined' && recording) return status('请先结束正在录给家人的原声，再接听通话。');
+    const blocked = action === 'callAccept' && mediaBlocked(); if (blocked) return status(blocked);
     if (action === 'callAccept') mediaIntent.add(call.id);
     const token = identity, generation = epoch, id = call.id; busy = true; render();
     try { const result = await request(action, { id }, token, result => { if (action === 'callAccept' && !current(token, generation)) bestEffortEnd(result.callId || result.call?.id, token, 'cancelled'); }); await apply(result, token, generation); }
@@ -289,17 +304,20 @@ globalThis.MemoryCall = (() => {
   }
   async function begin(value) {
     if (!dialog?.open || document.hidden || !mediaIntent.has(value.id)) return;
-    if (typeof recording !== 'undefined' && recording) return end('failed', '原声录音正在进行，通话已结束。请结束录音后重新呼叫。');
+    const blocked = mediaBlocked(); if (blocked) return end('failed', blocked);
     globalThis.MemoryAI?.pauseForCall(); document.querySelectorAll('audio').forEach(item => item.pause());
+    if (typeof frameAudio !== 'undefined') frameAudio?.pause();
     stopReason = '';
     const r = { id: value.id, token: identity, generation: epoch, pc: null, local: null, remote: null, playing: false, seen: new Set(), pendingIce: [], localCount: 0 };
     run = r; status('对方已接听，请允许麦克风。正在建立音频连接…');
     r.connectTimer = setTimeout(() => { if (liveRun(r)) end('failed', '音频连接超时，麦克风已关闭，请重试。'); }, 45000);
     try {
       const ice = await request('callIce', { id: r.id }, r.token); if (!liveRun(r)) return;
+      const blocked = mediaBlocked(); if (blocked) return end('failed', blocked);
       if (ice.iceTransportPolicy !== 'relay' || !Array.isArray(ice.iceServers) || !ice.iceServers.length || ice.expiresAt <= Date.now()) throw Error('通话中继配置不可用');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
-      if (!liveRun(r)) { stream.getTracks().forEach(track => track.stop()); return; } r.local = stream;
+      if (!liveRun(r)) { stream.getTracks().forEach(track => track.stop()); return; }
+      const afterPermission = mediaBlocked(); if (afterPermission) { stream.getTracks().forEach(track => track.stop()); return end('failed', afterPermission); } r.local = stream;
       const pc = new RTCPeerConnection({ iceServers: ice.iceServers, iceTransportPolicy: 'relay' }); r.pc = pc;
       pc.onicecandidate = event => {
         if (!liveRun(r)) return;
@@ -352,6 +370,7 @@ globalThis.MemoryCall = (() => {
     catch (error) { bestEffortEnd(callId, token, 'cancelled'); if (current(token, generation)) status(pendingMessage); }
   }
   document.addEventListener('visibilitychange', () => { if (document.hidden) { end('hangup', '页面已切到后台，通话与麦克风已关闭。'); dialog?.close(); } });
+  globalThis.addEventListener('offline', () => { if (call || retryStart || run) end('failed', '网络已断开，本机通话与麦克风已关闭。'); });
   globalThis.addEventListener('pagehide', dispose);
   return { busy: () => Boolean(dialog?.open || busy || run || (call && LIVE.has(call.status))), open, dispose, refresh, start, cancelStart, hasPendingCancellations, canStart, supported: () => !unsupported() };
 })();

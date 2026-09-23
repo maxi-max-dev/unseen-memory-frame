@@ -1,0 +1,282 @@
+/* Family surfaces share one quiet palette. Elder-frame presentation is owned
+   separately. Keep visibility, native dialog state and DOM order unchanged. */
+body:not(.elder-frame) {
+  --paper: #fffefa;
+  --ink: #292d2a;
+  --muted: #64695f;
+  --line: #dedfd5;
+  --sky: #e6eee5;
+  --pink: #eac9be;
+  --mint: #dbe9df;
+  --lav: #ebece4;
+  --text-secondary: #64695f;
+  --bg-card: #fffefa;
+  --family-green: #486653;
+  --family-red: #a94f42;
+  color: var(--ink);
+  background: #f4f2ec;
+  line-height: 1.7;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body:not(.elder-frame) :is(h1, h2, h3) { font-weight: 600; letter-spacing: -.025em; }
+body:not(.elder-frame) h1 { font-size: 32px; }
+body:not(.elder-frame) h2 { font-size: 23px; }
+body:not(.elder-frame) h3 { font-size: 19px; }
+body:not(.elder-frame) :is(.muted, small) { color: var(--muted); font-size: 13px; line-height: 1.65; }
+body:not(.elder-frame) a:not(.button):not(.brand) { color: #3e6049; text-underline-offset: 3px; }
+body:not(.elder-frame) :is(button, .button) {
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  padding: 10px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fffefa;
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.5;
+  box-shadow: none;
+  transition: background-color .15s, border-color .15s;
+}
+body:not(.elder-frame) button:not(:disabled):hover { filter: none; border-color: #a6b3a3; background: #eef2e9; }
+body:not(.elder-frame) button:disabled { opacity: .52; }
+body:not(.elder-frame) :is(.primary, .green) {
+  color: #fffefa; background: var(--family-green); border-color: var(--family-green);
+}
+body:not(.elder-frame) :is(.primary, .green):not(:disabled):hover { background: #36513f; border-color: #36513f; }
+body:not(.elder-frame) .red { color: #fffefa; background: var(--family-red); border-color: var(--family-red); }
+body:not(.elder-frame) .red:not(:disabled):hover { background: #8d4137; border-color: #8d4137; }
+body:not(.elder-frame) :is(.quiet, .blue) { background: #eeeee6; border-color: transparent; }
+body:not(.elder-frame) :is(button, a, input, textarea, select, summary):focus-visible {
+  outline: 3px solid #748e68;
+  outline-offset: 3px;
+}
+body:not(.elder-frame) :is(input, textarea, select) {
+  border-color: #cbd0c5;
+  border-radius: 12px;
+  background: #fff;
+  min-height: 46px;
+}
+body:not(.elder-frame) :is(input, textarea)::placeholder { color: #73766f; }
+body:not(.elder-frame) :is(input[type="checkbox"], input[type="radio"]) { min-height: 20px; accent-color: var(--family-green); }
+body:not(.elder-frame) input[type="range"] { accent-color: var(--family-green); }
+body:not(.elder-frame) label { gap: 8px; color: #454c42; font-size: 14px; }
+body:not(.elder-frame) summary { min-height: 44px; padding-block: 9px; cursor: pointer; }
+body:not(.elder-frame) .form { gap: 16px; }
+body:not(.elder-frame) .error { color: #8e3e33; background: #f9e9e1; border-radius: 10px; }
+body:not(.elder-frame) .danger { color: #983e33; }
+body:not(.elder-frame) .status { padding: 4px 10px; color: #426049; background: #e9eee4; }
+body:not(.elder-frame) .empty { color: var(--muted); line-height: 1.85; }
+body:not(.elder-frame) #toast { background: #303c31; color: #fffefa; border-radius: 12px; }
+
+/* The brand stays modest; the family's own title and photographs lead. */
+body:not(.elder-frame) > header { max-width: 1064px; padding: 22px 28px; border-bottom: 1px solid #e3e3d9; }
+body:not(.elder-frame) .brand { font-size: 28px; letter-spacing: -.035em; color: #344638; white-space: nowrap; }
+body:not(.elder-frame) .brand span { margin-left: 5px; font-size: 16px; letter-spacing: .02em; }
+body:not(.elder-frame) #connection { color: var(--muted); font-size: 12px; }
+body:not(.elder-frame) header button { font-size: 13px; padding-inline: 13px; }
+body:not(.elder-frame) .family-experience { max-width: 880px; margin-top: 28px; padding-bottom: 116px; }
+body:not(.elder-frame) .family-page > .subheading { margin-bottom: 24px; gap: 16px; }
+body:not(.elder-frame) .family-page > .subheading h1 { margin: 0 0 7px; overflow-wrap: anywhere; }
+body:not(.elder-frame) .subheading > div { min-width: 0; }
+body:not(.elder-frame) .avatar-link { flex-shrink: 0; width: 50px; height: 50px; background: #e5eadd; color: #456046; border: 1px solid #d1d9c8; border-radius: 50%; font-size: 20px; padding: 0; }
+body:not(.elder-frame) .paper { background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 26px; box-shadow: none; }
+body:not(.elder-frame) .taped::before { content: none; }
+body:not(.elder-frame) .family-page .paper { margin-bottom: 20px; }
+body:not(.elder-frame) .frame-preview { padding: 20px; }
+body:not(.elder-frame) .preview-heading { gap: 10px; margin-bottom: 14px; }
+body:not(.elder-frame) .preview-heading small { font-size: 12px; }
+body:not(.elder-frame) .frame-preview .photo { width: 100%; aspect-ratio: 16 / 10; max-height: 420px; border-radius: 13px; background: #eeeee6; }
+body:not(.elder-frame) .frame-preview .caption { padding: 18px 0 12px; }
+body:not(.elder-frame) .frame-preview .caption h2 { font-size: 24px; margin-bottom: 8px; }
+body:not(.elder-frame) .frame-preview .caption p { font-size: 16px; line-height: 1.8; margin: 8px 0; }
+body:not(.elder-frame) .frame-preview .caption small { font-size: 12px; }
+body:not(.elder-frame) .frame-preview > .actions { border-top: 1px solid #e5e5db; padding-top: 12px; margin: 12px 0 0; }
+body:not(.elder-frame) .frame-preview-entry { margin: 12px 0 0; background: transparent; border-color: var(--line); font-size: 14px; }
+body:not(.elder-frame) .frame-now-note button { min-height: 44px; margin-top: 5px; font-size: 13px; }
+body:not(.elder-frame) .home-actions { gap: 16px; margin: 0 0 22px; }
+body:not(.elder-frame) .family-page .home-actions > button { margin: 0; }
+body:not(.elder-frame) .home-actions > button { align-items: center; padding: 20px; border-radius: 18px; }
+body:not(.elder-frame) .home-actions b { font-size: 16px; font-weight: 600; }
+body:not(.elder-frame) .home-actions small { margin-top: 4px; }
+body:not(.elder-frame) .action-icon { background: #e8eee2; color: #4d654b; border-radius: 12px; min-width: 44px; height: 44px; font-size: 26px; }
+body:not(.elder-frame) .voice-icon { background: #f3e6df; color: #a35848; font-size: 20px; }
+
+/* Stories feel like a family album, rather than another dashboard. */
+body:not(.elder-frame) .tree-entry { border: 0; padding: 0; background: transparent; gap: 16px; }
+body:not(.elder-frame) .tree-entry:hover { background: transparent; }
+body:not(.elder-frame) .tree-entry h2 { margin-bottom: 4px; font-size: 22px; }
+body:not(.elder-frame) .tree-symbol { width: 54px; height: 54px; flex-shrink: 0; background: #e8eee2; color: #607657; font-size: 30px; }
+body:not(.elder-frame) .tree-note { border-bottom: 1px solid var(--line); margin-bottom: 22px; padding: 14px 0 20px; }
+body:not(.elder-frame) .memory-home h2 { font-size: 22px; }
+body:not(.elder-frame) .memory-home > .row small { font-size: 12px; }
+body:not(.elder-frame) .story-strip { padding: 18px 1px 12px; gap: 14px; }
+body:not(.elder-frame) .story-strip > .memory { min-width: 238px; width: 238px; max-width: 260px; padding: 10px; border-radius: 15px; gap: 12px; background: #fff; }
+body:not(.elder-frame) .story-strip > .memory img { height: 150px; border-radius: 9px; }
+body:not(.elder-frame) .memory b { font-weight: 600; line-height: 1.6; }
+body:not(.elder-frame) .memory small { color: var(--muted); }
+body:not(.elder-frame) .memory-symbol, body:not(.elder-frame) .story-strip > .memory > .memory-symbol { background: #eceee5; color: #65745a; }
+body:not(.elder-frame) .history-controls { border-top: 1px solid #eeeee5; padding-top: 5px; }
+body:not(.elder-frame) .new-reply { background: #e6eee1; border-color: #d4dfca; }
+body:not(.elder-frame) .segmented { padding: 5px; border: 1px solid #dddfd3; border-radius: 14px; background: #eeeee6; }
+body:not(.elder-frame) .segmented > button { border: 1px solid transparent; border-radius: 10px; background: transparent; }
+body:not(.elder-frame) .segmented > button[aria-selected="true"] { background: #fffefa; color: #3d593f; border-color: #d5ddcd; box-shadow: 0 1px 3px #2732220a; font-weight: 600; }
+body:not(.elder-frame) .person-node { background: #f1f2eb; }
+body:not(.elder-frame) .person-node.selected { background: #e5ecdf; outline-color: #799570; }
+body:not(.elder-frame) .timeline-date { border-color: #aab998; }
+
+body:not(.elder-frame) .family-tabbar { max-width: 390px; height: 72px; padding: 0 23px; border: 1px solid #dcded2; border-radius: 23px; background: #fffefafa; box-shadow: 0 6px 22px #313b2512; }
+body:not(.elder-frame) .family-tabbar > button { min-width: 68px; min-height: 52px; border: 0; border-radius: 14px; padding: 5px 16px; color: #69735e; font-size: 12px; background: transparent; }
+body:not(.elder-frame) .family-tabbar > button.on { background: #edf1e6; color: #3e583c; font-weight: 600; }
+body:not(.elder-frame) .family-tabbar .plus-button { min-width: 56px; width: 56px; height: 56px; min-height: 56px; margin-top: -15px; padding: 0; border-radius: 19px; color: #fffefa; background: var(--family-red); border: 4px solid #fffefa; font-size: 32px; box-shadow: 0 2px 7px #76322316; }
+body:not(.elder-frame) .family-tabbar .plus-button:hover { background: #8d4137; }
+body:not(.elder-frame) .member-row { padding: 16px 0; border-bottom-style: solid; gap: 14px; }
+body:not(.elder-frame) .member-row b { font-weight: 600; }
+body:not(.elder-frame) .person-avatar { flex-shrink: 0; width: 44px; height: 44px; border: 0; font-size: 20px; color: #735f47; background: #eee8dc; }
+body:not(.elder-frame) .frame-avatar { background: #e3ebdf; color: #546c4f; }
+body:not(.elder-frame) #familyMine .paper > .row h2 { margin: 0; }
+body:not(.elder-frame) #familyMine .paper > h2 { margin-top: 28px; margin-bottom: 8px; }
+body:not(.elder-frame) .stats-grid { padding: 2px 0 18px; }
+body:not(.elder-frame) .stats-grid b { font-size: 34px; font-weight: 500; color: #405c41; }
+body:not(.elder-frame) .mine-stats > .row { margin-top: 18px; }
+
+/* Authentication and the compose sheet use the same restrained form controls. */
+body:not(.elder-frame) .welcome { max-width: 530px; margin: 38px auto 70px; padding: 36px; }
+body:not(.elder-frame) .auth-brand { color: #697961; font-size: 12px; letter-spacing: .06em; }
+body:not(.elder-frame) .welcome h1 { font-size: 29px; line-height: 1.45; margin: 20px 0 12px; }
+body:not(.elder-frame) .welcome > .muted { margin-bottom: 22px; font-size: 14px; }
+body:not(.elder-frame) .auth-tabs { padding: 5px; gap: 5px; background: #eeeee6; border: 1px solid #dddfd3; border-radius: 14px; }
+body:not(.elder-frame) .auth-tabs > button { border-radius: 10px; background: transparent; color: var(--muted); }
+body:not(.elder-frame) .auth-tabs > button[aria-selected="true"] { background: #fffefa; color: #3d593f; border-color: #d5ddcd; font-weight: 600; }
+body:not(.elder-frame) .auth-family-mode { border: 1px solid var(--line); border-radius: 12px; padding: 13px; }
+body:not(.elder-frame) .auth-family-mode label { min-height: 44px; }
+body:not(.elder-frame) .auth-invite-note { background: #eaf0e4; }
+body:not(.elder-frame) .auth-legacy { margin-top: 24px; background: transparent; border-color: var(--line); }
+body:not(.elder-frame) .auth-endpoint { padding-top: 16px; border-top: 1px solid #e8e8dd; }
+body:not(.elder-frame) dialog { border: 1px solid #d8ddcf; border-radius: 23px; background: var(--paper); box-shadow: 0 16px 64px #27302224; padding: 26px; }
+body:not(.elder-frame) dialog::backdrop { background: #252e285e; backdrop-filter: blur(5px); }
+body:not(.elder-frame) .close { min-width: 44px; min-height: 44px; font-size: 25px; padding: 3px 10px; border-color: transparent; background: #eeeee6; }
+body:not(.elder-frame) .composer-dialog { width: min(680px, 100%); max-width: 100%; max-height: calc(100dvh - 28px); bottom: 14px; padding: 22px 28px 26px; background: #fffefa; }
+body:not(.elder-frame) .drawer-grab { background: #d6d9cb; }
+body:not(.elder-frame) .drawer-heading .close { right: -10px; top: -10px; }
+body:not(.elder-frame) .composer-dialog .composer h2 { font-size: 25px; padding-right: 42px; margin-bottom: 16px; }
+body:not(.elder-frame) .composer-dialog .composer { background: transparent; }
+body:not(.elder-frame) .photo-drop { border: 1px dashed #aebaa1; background: #f4f6ee; border-radius: 14px; padding: 17px; }
+body:not(.elder-frame) .photo-drop input { background: #fffefa; padding: 4px; border: 1px solid #dde2d3; font-size: 13px; }
+body:not(.elder-frame) input::file-selector-button { min-height: 44px; padding: 8px 12px; margin-right: 9px; border: 0; border-radius: 8px; background: #e8eee1; color: #42583b; font: inherit; }
+body:not(.elder-frame) .draft-context { padding: 12px; background: #eef1e5; }
+body:not(.elder-frame) .draft-context button { min-height: 44px; padding: 8px 12px; }
+body:not(.elder-frame) .recording { border-color: #c6cdbc; background: #f6f7f0; }
+body:not(.elder-frame) .detail-photo { border: 0; border-radius: 13px; }
+body:not(.elder-frame) .detail-tags > span { background: #eaf0e3; color: #4b6144; }
+body:not(.elder-frame) .memory-quote { border-color: #bdc8ab; background: #f0f2e8; border-radius: 0 12px 12px 0; }
+body:not(.elder-frame) .display-settings { border-style: solid; border-color: var(--line); }
+
+/* AI, site reminders and optional calls belong to the same family UI. These
+   selectors never override display or [hidden], so unavailable states remain. */
+body:not(.elder-frame) .ai-home-entry { margin: 0 0 22px; padding: 19px 21px; border: 1px solid #d7dfcd; border-radius: 18px; background: #edf1e6; gap: 16px; }
+body:not(.elder-frame) .ai-home-entry strong { font-size: 17px; font-weight: 600; }
+body:not(.elder-frame) .ai-home-entry p { color: #636d59; font-size: 13px; margin-top: 5px; }
+body:not(.elder-frame) .ai-home-entry button { min-height: 44px; font-size: 14px; }
+body:not(.elder-frame) .ai-dialog { padding: 24px; }
+body:not(.elder-frame) .ai-dialog-heading { top: -24px; padding-block: 10px; background: #fffefa; gap: 12px; }
+body:not(.elder-frame) .ai-dialog-heading h2 { font-size: 24px; }
+body:not(.elder-frame) .ai-dialog > .muted { margin-block: 8px; line-height: 1.55; }
+body:not(.elder-frame) .ai-dialog label { margin-block: 10px; }
+body:not(.elder-frame) .ai-realtime-entry { background: #edf1e6; border-color: #d8e0cf; padding: 12px 15px; font-size: 14px; margin-top: 10px; }
+body:not(.elder-frame) .ai-realtime-note { background: #edf1e6; }
+body:not(.elder-frame) .ai-photo-picker { border-block: 1px solid #e4e7dc; padding: 0; margin-block: 10px; }
+body:not(.elder-frame) .ai-photo-picker summary { font-size: 14px; color: #47633f; }
+body:not(.elder-frame) .ai-messages { max-height: 35dvh; }
+body:not(.elder-frame) .ai-messages p { padding: 12px; margin-block: 8px; line-height: 1.6; background: #f0f3e9; border: 1px solid #dbe2d0; border-radius: 14px; }
+body:not(.elder-frame) .ai-messages strong { color: #435f3d; }
+body:not(.elder-frame) #aiStatus { font-size: 14px; color: #5d6953; }
+body:not(.elder-frame) .ai-dialog > small { display: block; margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
+body:not(.elder-frame) .ai-action-card { border: 1px solid #c3d0b6; background: #f1f5ea; border-radius: 15px; }
+body:not(.elder-frame) :is(#familyContactDialog, .family-call-dialog) { border: 1px solid #d8ddcf; border-radius: 23px; padding: 24px; }
+body:not(.elder-frame) #familyContactDialog h2 { font-weight: 600; font-size: 23px; letter-spacing: -.025em; }
+body:not(.elder-frame) #familyContactDialog .contact-record { border-color: var(--line); }
+body:not(.elder-frame) :is(#familyCallNotice, #familyContactNotice) { color: #334731; border: 1px solid #c7d2bb; border-radius: 15px; background: #f2f6e9; box-shadow: 0 5px 18px #27302212; }
+body:not(.elder-frame) .family-call-dialog :is(.call-description, #callCapability) { font-size: 14px; color: var(--muted); }
+body:not(.elder-frame) .family-call-dialog #callStatus { padding: 12px; border-radius: 12px; background: #f1f3eb; }
+body:not(.elder-frame) .family-call-dialog #callStatus:empty { min-height: 0; margin: 0; padding: 0; background: transparent; }
+body:not(.elder-frame) .preview-stage { border: 1px solid #dadfd1; background: #eff2e8; border-radius: 17px; }
+body:not(.elder-frame) .preview-stage .photo { background: #292d28; }
+
+@media (max-width: 700px) {
+  body:not(.elder-frame) > header { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding: 17px 18px 16px; }
+  body:not(.elder-frame) header > div { display: contents; }
+  body:not(.elder-frame) .brand { grid-column: 1 / 3; grid-row: 1; font-size: 25px; }
+  body:not(.elder-frame) .brand span { display: inline; font-size: 14px; margin-left: 3px; }
+  body:not(.elder-frame) #connection { grid-column: 3; grid-row: 1; margin: 0; text-align: right; font-size: 11px; }
+  /* The optional calling entry adds a fourth control. Keep paired rows when
+     that entry is mounted, without allocating a slot to a hidden entry. */
+  body:not(.elder-frame) > header:has(#openFamilyCall:not([hidden])) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  body:not(.elder-frame) > header:has(#openFamilyCall:not([hidden])) .brand { grid-column: 1; }
+  body:not(.elder-frame) > header:has(#openFamilyCall:not([hidden])) #connection { grid-column: 2; }
+  body:not(.elder-frame) header button { min-height: 44px; padding: 9px 7px; font-size: 13px; }
+  body:not(.elder-frame) #openAI { font-size: 13px; }
+  body:not(.elder-frame) .family-experience { padding: 0 16px 110px; margin-top: 25px; }
+  body:not(.elder-frame) .family-page > .subheading { margin-bottom: 21px; }
+  body:not(.elder-frame) .family-page > .subheading h1 { font-size: 28px; }
+  body:not(.elder-frame) .family-page .paper { padding: 18px; border-radius: 20px; }
+  body:not(.elder-frame) .family-page .frame-preview { padding: 13px; }
+  body:not(.elder-frame) .frame-preview .caption { padding: 15px 3px 12px; }
+  body:not(.elder-frame) .frame-preview .caption h2 { font-size: 22px; }
+  body:not(.elder-frame) .preview-heading { align-items: center; margin-bottom: 11px; }
+  body:not(.elder-frame) .preview-heading .status { font-size: 11px; padding: 4px 8px; }
+  body:not(.elder-frame) .preview-heading small { font-size: 11px; }
+  body:not(.elder-frame) .home-actions { gap: 12px; margin-bottom: 20px; }
+  body:not(.elder-frame) .home-actions > button { padding: 16px; flex-direction: column; align-items: flex-start; gap: 12px; }
+  body:not(.elder-frame) .home-actions b { font-size: 15px; }
+  body:not(.elder-frame) .home-actions small { font-size: 12px; }
+  body:not(.elder-frame) .action-icon { height: 38px; min-width: 38px; font-size: 24px; border-radius: 10px; }
+  body:not(.elder-frame) .voice-icon { font-size: 18px; }
+  body:not(.elder-frame) .tree-entry { gap: 12px; }
+  body:not(.elder-frame) .tree-symbol { width: 44px; height: 44px; font-size: 27px; }
+  body:not(.elder-frame) .tree-entry h2 { font-size: 21px; }
+  body:not(.elder-frame) .tree-entry small { font-size: 12px; }
+  body:not(.elder-frame) .memory-home > .row { gap: 5px; }
+  body:not(.elder-frame) .story-strip > .memory { min-width: 225px; width: 225px; }
+  body:not(.elder-frame) .family-tabbar { bottom: max(12px, env(safe-area-inset-bottom)); width: calc(100% - 32px); }
+  body:not(.elder-frame) #familyMine h2 { font-size: 21px; }
+  body:not(.elder-frame) #familyMine #people { padding-inline: 11px; font-size: 13px; }
+  body:not(.elder-frame) .mine-stats > .row > button { padding-inline: 10px; font-size: 14px; }
+  body:not(.elder-frame) .welcome { margin-top: 24px; padding: 23px 20px; }
+  body:not(.elder-frame) .welcome h1 { font-size: 27px; }
+  body:not(.elder-frame) .welcome > .muted { font-size: 13px; }
+  body:not(.elder-frame) dialog { padding: 20px; }
+  body:not(.elder-frame) .composer-dialog { bottom: 0; max-height: calc(100dvh - 12px); padding: 18px 20px 24px; border-radius: 23px 23px 0 0; border-bottom: 0; }
+  body:not(.elder-frame) .composer-dialog .composer h2 { font-size: 24px; }
+  body:not(.elder-frame) .ai-home-entry { padding: 16px 18px; gap: 12px; }
+  body:not(.elder-frame) .ai-home-entry button { padding-inline: 13px; }
+  body:not(.elder-frame) .ai-dialog { padding: 18px; }
+  body:not(.elder-frame) .ai-dialog-heading { top: -18px; }
+  body:not(.elder-frame) .ai-dialog-heading h2 { font-size: 23px; }
+  body:not(.elder-frame) :is(#familyContactDialog, .family-call-dialog) { padding: 18px; }
+}
+
+@media (max-width: 360px) {
+  body:not(.elder-frame) > header { padding-inline: 14px; gap: 7px; }
+  body:not(.elder-frame) .brand { font-size: 23px; }
+  body:not(.elder-frame) .brand span { font-size: 12px; }
+  body:not(.elder-frame) .family-experience { padding-inline: 12px; }
+  body:not(.elder-frame) .family-page > .subheading h1 { font-size: 26px; }
+  body:not(.elder-frame) .home-actions > button { padding: 13px; }
+  body:not(.elder-frame) .home-actions b { font-size: 14px; }
+  body:not(.elder-frame) .family-tabbar { width: calc(100% - 24px); padding-inline: 18px; }
+  body:not(.elder-frame) .welcome { padding: 21px 17px; }
+  body:not(.elder-frame) .welcome h1 { font-size: 25px; }
+  body:not(.elder-frame) .composer-dialog { padding-inline: 17px; }
+  body:not(.elder-frame) .photo-drop { padding: 12px; }
+  body:not(.elder-frame) .ai-dialog { padding: 15px; }
+  body:not(.elder-frame) .ai-dialog-heading { top: -15px; }
+  body:not(.elder-frame) .ai-dialog .row { gap: 7px; }
+  body:not(.elder-frame) .ai-dialog .row > button { padding-inline: 12px; }
+}
+
+/* Respect the existing display preference, including smaller helper text. */
+.large-text body:not(.elder-frame) :is(small, .muted, .home-actions small, .tree-entry small, .frame-preview .caption small) { font-size: 16px; }
+.large-text body:not(.elder-frame) .home-actions b { font-size: 19px; }
+@media (prefers-reduced-motion: reduce) { body:not(.elder-frame) :is(button, .button) { transition: none; } }

@@ -122,6 +122,32 @@ function fixture(options = {}) {
   return { context, document, listeners, windowEvents, calls, recorders, utterances, urls, revoked, timers, callStarts, callCancellations, $, send, suggest, actionCalls, defaultResponse, microphoneCalls: () => microphoneCalls, speechCancels: () => speechCancels, polls: () => polls };
 }
 
+test('pending family microphone permission blocks text, realtime and suspended text entry', async () => {
+  const f = fixture({ realTime: true });
+  f.context.recordingStarting = true;
+  await f.context.MemoryAI.open(); await f.context.MemoryRealtime.open();
+  assert.equal(f.document.querySelector('dialog'), null); assert.equal(f.calls.length, 0);
+  f.context.recordingStarting = false; await f.context.MemoryAI.open(); f.$('aiQuestion').value = '保留草稿';
+  f.context.recordingStarting = true; await f.$('aiRecord').click();
+  assert.equal(f.recorders.length, 0); assert.match(f.$('aiStatus').textContent, /等待中的录音授权/);
+  f.context.recordingStarting = false; await f.$('aiRealtimeEntry').click();
+  f.context.recordingStarting = true; await f.$('realtimeText').click(); await settle();
+  assert.equal(f.$('aiQuestion'), null); assert.equal(f.microphoneCalls(), 0);
+  f.context.recordingStarting = false; await f.context.MemoryAI.resume();
+  assert.equal(f.$('aiQuestion').value, '保留草稿');
+});
+
+test('explicit realtime start rechecks competing recording and pauses detached frame audio', async () => {
+  const f = fixture({ realTime: true, api: (call, normal) => call.action === 'aiRealtimeCapabilities' ? { enabled: true, provider: 'tencent-trtc' } : normal(call.action, call.data) });
+  let pauses = 0; f.context.frameAudio = { pause() { pauses++; } }; f.context.crypto = { randomUUID: () => 'local-realtime-test' };
+  await f.context.MemoryRealtime.open(); assert.equal(pauses, 0);
+  f.context.recordingStarting = true; await f.$('realtimeStart').click();
+  assert.equal(f.microphoneCalls(), 0); assert.equal(pauses, 0);
+  f.context.recordingStarting = false; await f.$('realtimeStart').click(); await settle();
+  assert.equal(pauses, 1); assert.equal(f.microphoneCalls(), 1);
+  assert.equal(f.actionCalls('aiRealtimeStart').length, 0, 'rejected test microphone cannot reach the provider');
+});
+
 test('real realtime panel stays explicitly unavailable without requesting microphone and returns to text chat', async () => {
   const f = fixture({ realTime: true, api: (call, normal) => call.action === 'aiRealtimeCapabilities' ? { enabled: false, provider: 'tencent-trtc', reason: '实时语音尚未开通' } : normal(call.action, call.data) });
   await f.context.MemoryAI.open(); await f.$('aiRealtimeEntry').click();
@@ -205,7 +231,7 @@ test('background capability reply updates availability but never starts audio', 
   assert.equal(f.$('realtimeStart').disabled, true); assert.equal(f.microphoneCalls(), 0);
 });
 
-test('message-only Demo offers an explicit reminder choice without loading calling capabilities or starting a call', async () => {
+test('a missing optional call module still offers an explicit reminder choice without starting a call', async () => {
   const f = fixture(); delete f.context.MemoryCall;
   await f.context.MemoryAI.open(); await f.suggest({ kind: 'contact', text: '' });
   assert.equal(f.$('actionChooseCall'), null);
@@ -223,7 +249,8 @@ test('message-only Demo offers an explicit reminder choice without loading calli
   assert.equal(f.callStarts.length, 0);
   assert.equal(f.microphoneCalls(), 0);
   const html = fs.readFileSync(path.join(__dirname, '../server/public/index.html'), 'utf8');
-  assert.doesNotMatch(html, /(?:src|href)="\/family-call\./);
+  assert.match(html, /src="\/family-call\.js/);
+  assert.ok(html.indexOf('/family-call.js') < html.indexOf('/ai-action-ui.js'));
   assert.match(html, /unseen-sans\/fonts.css/);
 });
 

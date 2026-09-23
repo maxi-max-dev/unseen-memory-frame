@@ -88,6 +88,28 @@ test('heartbeat loss, expiry, and SDK errors release media and do not automatica
   }
 });
 
+test('permission lost during either successful or failed heartbeat releases media and provider lease', async () => {
+  for (const failure of [false, true]) {
+    const pending = deferred();
+    const f = fixture({ request: (action, data, opts, normal) => action === 'aiRealtimeStatus' ? pending.promise : normal(action) });
+    await f.client.start();
+    const heartbeat = [...f.timers.values()].find(t => t.ms === 10000).fn();
+    f.hide(); if (failure) pending.reject(Error('late network error')); else pending.resolve({ status: 'active' });
+    await heartbeat; await settle();
+    assert.ok(f.tracks[0].stops); assert.ok(f.instances[0].destroyed); assert.equal(f.client.busy(), false);
+    assert.equal(f.timers.size, 0); assert.equal(f.calls.filter(call => call.action === 'aiRealtimeStop').length, 1);
+  }
+});
+
+test('a late heartbeat from a stopped run cannot terminate its replacement', async () => {
+  const pending = deferred();
+  const f = fixture({ request: (action, data, opts, normal) => action === 'aiRealtimeStatus' ? pending.promise : normal(action) });
+  await f.client.start(); const heartbeat = [...f.timers.values()].find(t => t.ms === 10000).fn();
+  await f.client.stop(); await f.client.start(); pending.resolve({ status: 'active' }); await heartbeat; await settle();
+  assert.equal(f.tracks[1].stops, 0); assert.equal(f.client.busy(), true);
+  assert.equal(f.calls.filter(call => call.action === 'aiRealtimeStop').length, 1); await f.client.stop();
+});
+
 test('page keeps original navigation, offers visible chat card and includes only lazy SDK import', () => {
   const root = path.join(__dirname, '../server/public');
   const chat = fs.readFileSync(path.join(root, 'ai-conversation.js'), 'utf8'), shell = fs.readFileSync(path.join(root, 'family-experience.js'), 'utf8'), html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');

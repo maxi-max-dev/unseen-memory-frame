@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { LocalStore } = require('../server/store');
+const { LocalStore, CloudStore } = require('../server/store');
 const { createFamilyCall, RING_TTL, CALL_TTL, PEER_TTL, RETENTION, MAX_CANDIDATES, MAX_SDP_BYTES, MAX_HISTORY } = require('../server/family-call');
 
 const testEnv = () => ({ MEMORY_CALL_ENABLED: '1', MEMORY_CALL_ICE_SERVERS_JSON: JSON.stringify([{ urls: 'turns:relay.example.test:5349?transport=tcp' }]), MEMORY_CALL_TURN_SECRET: 'local-unit-test-only-not-a-real-key-123456' });
@@ -406,4 +406,73 @@ test('visible history remains bounded while tombstones prevent retries re-ringin
   const record = await f.store.get('rtc_home'); assert.equal(record.calls.length, MAX_HISTORY); assert.equal(record.starts.length, MAX_HISTORY + 2);
   assert.equal(record.calls.some(item => item.id === first), false); await rejects(f.start('request_0'), 409);
   f.advance(RETENTION); assert.deepEqual((await f.call('callState')).calls, []); assert.equal((await f.store.get('rtc_home')).starts.length, 0);
+});
+
+// Model CloudBase's dotted-field object merge rather than LocalStore's full
+// document replacement. Arrays (including []) replace the complete field.
+function mergeCloudFields(current, update) {
+  const next = structuredClone(current);
+  for (const [key, value] of Object.entries(update)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) next[key] = mergeCloudFields(next[key] || {}, value);
+    else next[key] = structuredClone(value);
+  }
+  return next;
+}
+function mergingCloudWorkers(seed) {
+  const records = new Map(Object.entries(structuredClone(seed)));
+  return { records, worker() {
+    const store = Object.create(CloudStore.prototype);
+    store.get = async id => { const snapshot = structuredClone(records.get(id) || null); await new Promise(resolve => setImmediate(resolve)); return snapshot; };
+    store.list = async (kind, room) => [...records.values()].filter(item => item.kind === kind && (!room || item.room === room)).map(item => structuredClone(item));
+    store.db = { command: { exists: () => undefined } };
+    store.collection = {
+      async add(doc) { if (records.has(doc._id)) throw Error('duplicate'); records.set(doc._id, structuredClone(doc)); return {}; },
+      where(query) { return { async update(data) {
+        const current = records.get(query._id);
+        if (!current || current._rev !== query._rev) return { updated: 0 };
+        records.set(query._id, mergeCloudFields(current, data)); return { updated: 1 };
+      } }; }
+    };
+    return store;
+  } };
+}
+
+test('CloudStore object-to-array migration preserves in-window limits and CAS charges across workers', async t => {
+  for (const legacy of [true, false]) {
+    const f = await fixture(t), { callId } = await f.start(); await f.call('callEnd', { id: callId });
+    await f.store.mutate('rtc_home', old => ({ ...old, budget: { since: f.clock(), count: 3, senders: legacy ? { u_owner: 3 } : [{ id: 'u_owner', count: 3 }] } }));
+    const transport = mergingCloudWorkers(f.store.records);
+    const workers = [0, 1].map(() => createFamilyCall(transport.worker(), { allowed: f.allowed, env: f.env, clock: f.clock }));
+    const results = await Promise.allSettled(workers.map((worker, index) => worker.handle('callCancelStart', { requestId: 'migration_cancel_' + index }, f.owner)));
+    assert.equal(results.filter(item => item.status === 'fulfilled').length, 1);
+    assert.equal(results.find(item => item.status === 'rejected').reason.status, 429);
+    assert.equal(transport.records.get('rtc_home').budget.count, 4);
+    assert.deepEqual(transport.records.get('rtc_home').budget.senders, [{ id: 'u_owner', count: 4 }]);
+  }
+});
+
+test('CloudStore expiry clears legacy and array sender counters before accepting new-window requests', async t => {
+  for (const legacy of [true, false]) {
+    const f = await fixture(t), { callId } = await f.start(); await f.call('callEnd', { id: callId });
+    await f.store.mutate('rtc_home', old => ({ ...old, budget: { since: f.clock(), count: 8, senders: legacy ? { u_owner: 4, old_member: 4 } : [{ id: 'u_owner', count: 4 }, { id: 'old_member', count: 4 }] } }));
+    const transport = mergingCloudWorkers(f.store.records), worker = createFamilyCall(transport.worker(), { allowed: f.allowed, env: f.env, clock: f.clock });
+    f.advance(10 * 60000);
+    await worker.handle('callEnd', { id: callId }, f.owner);
+    assert.deepEqual(transport.records.get('rtc_home').budget.senders, []); assert.equal(transport.records.get('rtc_home').budget.count, 0);
+    await worker.handle('callCancelStart', { requestId: 'new_window_cancel' }, f.owner);
+    assert.deepEqual(transport.records.get('rtc_home').budget.senders, [{ id: 'u_owner', count: 1 }]);
+    assert.equal(transport.records.get('rtc_home').budget.count, 1);
+  }
+});
+
+let sdk;
+try { sdk = require('@cloudbase/node-sdk'); } catch { try { sdk = require('../server/node_modules/@cloudbase/node-sdk'); } catch {} }
+test('actual offline CloudBase SDK omits empty sender maps but sends the complete empty array', { skip: !sdk }, async () => {
+  const query = sdk.init({ env: 'offline-call-budget-contract' }).database().collection('memory_demo_records').where({ _id: 'rtc_offline' });
+  const updates = [];
+  query._request.send = async (action, params) => { assert.equal(action, 'database.modifyDocument'); updates.push(JSON.parse(params.data).$set); return { data: { updated: 1 } }; };
+  await query.update({ budget: { since: 123, count: 0, senders: {} } });
+  assert.equal(Object.hasOwn(updates[0], 'budget.senders'), false, 'legacy reset leaves stored sender keys untouched');
+  await query.update({ budget: { since: 123, count: 0, senders: [] } });
+  assert.deepEqual(updates[1]['budget.senders'], []);
 });

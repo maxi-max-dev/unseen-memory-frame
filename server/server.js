@@ -306,7 +306,7 @@ async function createApp(options = {}) {
     const json = (value, code = 200) => { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(value)); };
     try {
       const url = new URL(req.url, 'http://localhost');
-      if (url.pathname === '/api/health') return json({ ok: true, storage: env ? 'cloudbase' : 'local', version: '0.4.8', accounts: true,
+      if (url.pathname === '/api/health') return json({ ok: true, storage: env ? 'cloudbase' : 'local', version: '0.4.9', accounts: true,
         asrConfigured: Boolean(process.env.ASR_API_KEY || process.env.TENCENT_SECRET_ID || process.env.TENCENTCLOUD_SECRETID), aiConfigured: Boolean(process.env.AI_MODEL), maxRecordingSeconds: 60 });
       if (url.pathname === '/api' && req.method === 'POST') {
         const ip = req.socket.remoteAddress, bucket = Math.floor(now() / 60000), key = ip + ':' + bucket;

@@ -108,7 +108,8 @@ test('real HTTP and Chrome: confirmed presence asks about fixed photo once and f
     }
   }
   await api('send', { id: 'third', image: image.id, text: '后来寄来的照片', title: '后来寄来的照片' }, owner.token);
-  await framePage.evaluate(() => poll()); assert.match(await framePage.locator('#caption').textContent(), /后来寄来/);
+  await framePage.evaluate(() => poll()); assert.match(await framePage.locator('#caption').textContent(), /一起看看今天的风景/);
+  assert.equal(await framePage.evaluate(() => state.messages.some(item => item.text === '后来寄来的照片')), true);
   await framePage.locator('#presenceAccept').click(); await framePage.locator('.ai-dialog').waitFor({ state: 'visible' });
   await framePage.waitForFunction(() => document.querySelector('#aiMessages')?.textContent.includes('这张照片让您想起了什么？'));
   assert.deepEqual(await framePage.locator('#aiMessages p').allTextContents(), ['AI：这张照片让您想起了什么？']);

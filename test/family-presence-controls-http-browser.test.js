@@ -94,7 +94,7 @@ test('family audit: real HTTP presence decline, busy drop, stop and late answer'
   await t.test('settings and ordinary AI dialogs consume busy events without later invitations', async () => {
     await page.locator('#frameMenu summary').click(); await page.locator('#settings').click();
     await report(); await noInvitation(); await page.locator('#closeModal').click(); await observeConsumedAgain();
-    await page.locator('#aiHomeChat').click(); await page.locator('#aiQuestion').waitFor({ state: 'visible' });
+    await page.locator('#frameMenu summary').click(); await page.locator('#aiHomeChat').click(); await page.locator('#aiQuestion').waitFor({ state: 'visible' });
     await report(); await noInvitation(); await page.locator('#aiClose').click(); await observeConsumedAgain();
     assert.equal(calls.length, 0);
   });
@@ -120,10 +120,11 @@ test('family audit: real HTTP presence decline, busy drop, stop and late answer'
     await page.locator('#aiClose').click(); await failed;
     await assertEventually(() => calls[1].signal.aborted); releases[1]();
     await observeConsumedAgain(); assert.equal(await page.locator('.ai-dialog').count(), 0);
-    await page.locator('#aiHomeChat').click();
+    await page.locator('#frameMenu summary').click(); await page.locator('#aiHomeChat').click();
     await page.waitForFunction(() => document.querySelector('#aiQuestion') && !document.querySelector('#aiQuestion').disabled);
     assert.equal(calls.length, 2); assert.equal(await page.locator('#aiMessages').innerText(), '');
-    assert.equal(await page.locator('#aiPhotos img').count(), 0);
+    assert.equal(await page.locator('#aiPhotos img').count(), 1);
+    assert.equal(await page.locator('#aiReadPhoto').isChecked(), false);
     await page.locator('#aiClose').click();
   });
   await t.test('successful first question stays silent; actual user text matching the internal seed remains visible', async () => {

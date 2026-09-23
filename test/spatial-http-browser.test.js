@@ -7,15 +7,18 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { createApp } = require('../server/server');
 const { LocalStore } = require('../server/store');
-const { createNetwork } = require('../server/spatial-network');
-const { SHARE, SCENE, zip, page: providerPage } = require('./helpers/spatial-fixture');
+const { createNetwork, parseCamera } = require('../server/spatial-network');
+const { SHARE: X5_SHARE, SCENE: X5_SCENE, zip, page: providerPage } = require('./helpers/spatial-fixture');
 
 test('real HTTP + Chrome: family share text, automatic import, retry, shared viewing and revoked reads', {
   skip: !process.env.AI_UX_PLAYWRIGHT || !process.env.AI_UX_CHROME, timeout: 180000
 }, async t => {
   const realProvider = process.env.SPATIAL_REAL_SHARE === '1';
+  assert.ok(!process.env.SPATIAL_REAL_SCENE || ['x5', 'x6'].includes(process.env.SPATIAL_REAL_SCENE), 'Only the two user-authorized real scenes');
+  const SCENE = realProvider && process.env.SPATIAL_REAL_SCENE === 'x6' ? 'GS3DCfcc01814d19bae52c5ca65c7d75273bb' : X5_SCENE;
+  const SHARE = SCENE === X5_SCENE ? X5_SHARE : 'https://app.insta360.com/3dspace/detail/' + SCENE;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'spatial-browser-'));
-  const model = zip(); let reads = 0;
+  const model = zip(); let reads = 0, cameraCheck;
   const upstream = realProvider ? createNetwork() : {
     page: async () => providerPage(),
     download: async (_url, filename) => {
@@ -23,7 +26,15 @@ test('real HTTP + Chrome: family share text, automatic import, retry, shared vie
       return { bytes: model.length, digest: crypto.createHash('sha256').update(model).digest('hex') };
     }
   };
-  const network = { ...upstream, page: async (...args) => {
+  const network = { ...upstream, ...(upstream.camera ? { camera: async (...args) => {
+    const body = await upstream.camera(...args), cameras = JSON.parse(body);
+    const previous = [...cameras.filter(c => /_cam1_up$/.test(c?.img_name)), ...cameras.filter(c => /_cam1_center$/.test(c?.img_name)), ...cameras]
+      .map(camera => parseCamera(JSON.stringify([camera]))).find(Boolean);
+    const selected = parseCamera(body);
+    const pitch = view => view ? Math.round(Math.asin(Math.min(1, Math.abs(view.forward[1]))) * 180 / Math.PI * 100) / 100 : null;
+    cameraCheck = { previousAbsPitchDegrees: pitch(previous), selectedAbsPitchDegrees: pitch(selected), sameAsPrevious: JSON.stringify(previous) === JSON.stringify(selected) };
+    return body;
+  } } : {}), page: async (...args) => {
     if (++reads === 1) return providerPage(SCENE, { outputs: [{ type: 'model', fileFormat: 'sog', url: 'https://unverified.invalid/file.sog?Signature=fixture-secret' }] });
     return upstream.page(...args);
   } };
@@ -88,6 +99,14 @@ test('real HTTP + Chrome: family share text, automatic import, retry, shared vie
   assert.equal(reads, 2);
   const ready = (await api('state', {}, owner.token)).messages[0];
   assert.equal(ready.spatial.status, 'ready'); assert.equal(ready.spatial.errorCode, undefined);
+  const storedModel = (await app.store.get('sp_' + owner.room)).entries[SCENE];
+  assert.equal(storedModel.format, 'sog');
+  if (realProvider) {
+    assert.ok(storedModel.view, 'real supplied camera data remains valid');
+    assert.ok(cameraCheck.selectedAbsPitchDegrees <= cameraCheck.previousAbsPitchDegrees);
+    if (SCENE === X5_SCENE) assert.equal(cameraCheck.sameAsPrevious, true, 'preserve the existing X5 starting pose');
+    else assert.ok(cameraCheck.selectedAbsPitchDegrees < 10, 'X6 starts near the horizon');
+  }
   assert.equal(ranges.length, 0, 'import/state never triggers browser model downloads before opening');
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await page.locator('#currentSpatial [data-spatial-action="view"]').click();
@@ -103,6 +122,7 @@ test('real HTTP + Chrome: family share text, automatic import, retry, shared vie
   assert.equal(await page.locator('.spatial-viewer').count(), 0);
   await page.setViewportSize({ width: 1024, height: 768 });
   await page.goto(origin + '/frame');
+  await page.locator('#frameMenu summary').click();
   await page.locator('#currentSpatial [data-spatial-action="view"]').click();
   if (realProvider) {
     await page.locator('.spatial-viewer[data-state="ready"]').waitFor({ timeout: 90000 });
@@ -116,5 +136,5 @@ test('real HTTP + Chrome: family share text, automatic import, retry, shared vie
   await api('logout', {}, frame.token);
   assert.equal((await fetch(origin + asset.url, { headers: { Range: 'bytes=0-0' } })).status, 404);
   assert.deepEqual(errors, []);
-  t.diagnostic(JSON.stringify({ realProvider, localStore: 'isolated', backend: 'real HTTP', viewer: realProvider ? 'real PlayCanvas + SwiftShader software rendering; no hardware GPU claim' : 'explicit test double; no rendering claim', bytes: ready.spatial.bytes, digest: ready.spatial.digest, familySegments: realProvider ? Math.ceil(ready.spatial.bytes / 4194304) : 0, cloudWrites: 0 }));
+  t.diagnostic(JSON.stringify({ realProvider, scene: SCENE === X5_SCENE ? 'x5' : 'x6', localStore: 'isolated', backend: 'real HTTP', viewer: realProvider ? 'real PlayCanvas + SwiftShader software rendering; no hardware GPU claim' : 'explicit test double; no rendering claim', bytes: ready.spatial.bytes, digest: ready.spatial.digest, model: storedModel.model, cameraValidated: !!storedModel.view, cameraCheck, familySegments: realProvider ? Math.ceil(ready.spatial.bytes / 4194304) : 0, cloudWrites: 0 }));
 });
