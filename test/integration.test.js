@@ -45,6 +45,33 @@ test('HTTP: two sessions transfer files, retry sends/uploads, restart persistenc
   const restarted = await createApp({ dataDir: f.dir, setupCode: 'test-code' });
   assert.equal((await restarted.api('state', {}, owner.token)).messages.length, 2);
 });
+test('HTTP: media downloads allow GET and HEAD only, without reading the file for HEAD', async t => {
+  const f = await fixture(t), { call, owner } = f;
+  const upload = await call('upload', { base64: png.toString('base64') }, owner.token);
+  await call('send', { id: 'media-methods', image: upload.id }, owner.token);
+  const state = await call('state', {}, owner.token);
+  const url = f.base + state.messages[0].imageURL;
+  const read = f.store.read.bind(f.store); let reads = 0;
+  f.store.read = async (...args) => { reads++; return read(...args); };
+
+  const head = await fetch(url, { method: 'HEAD' });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get('content-type'), 'image/png');
+  assert.equal(head.headers.get('content-length'), String(png.length));
+  assert.equal(head.headers.get('accept-ranges'), 'none');
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
+  assert.equal(reads, 0);
+
+  const post = await fetch(url, { method: 'POST' });
+  assert.equal(post.status, 405);
+  assert.match((await post.json()).error, /不支持的请求/);
+  assert.equal(reads, 0);
+
+  const get = await fetch(url);
+  assert.equal(get.status, 200);
+  assert.deepEqual(Buffer.from(await get.arrayBuffer()), png);
+  assert.equal(reads, 1);
+});
 test('HTTP: room isolation, frame restrictions, injection, expired and revoked pairing', async t => {
   const { call, store, owner, frame, inv } = await fixture(t);
   const other = await call('create', { setupCode: 'test-code' });
