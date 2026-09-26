@@ -80,7 +80,7 @@ async function createApp(options = {}) {
     const cached = urlCache.get(id); if (cached && cached.until > now()) return cached.url;
     let url;
     if (store.url) url = await store.url(f.file);
-    else { const access = random(); await store.put({ _id: 'd_' + hash(access), kind: 'download', room: s.room, file: f.file, mime: f.mime, expires: now() + 900000 }); url = '/media/' + access; }
+    else { const access = random(); await store.put({ _id: 'd_' + hash(access), kind: 'download', room: s.room, file: f.file, mime: f.mime, bytes: f.bytes, expires: now() + 900000 }); url = '/media/' + access; }
     urlCache.set(id, { url, until: now() + 600000 }); return url;
   }
   async function hydrateMessages(messages, s, spatialState) {
@@ -331,10 +331,14 @@ async function createApp(options = {}) {
         return;
       }
       if (url.pathname.startsWith('/media/')) {
+        if (!['GET', 'HEAD'].includes(req.method)) fail('不支持的请求', 405);
         const access = url.pathname.slice(7); if (!/^[a-f0-9]{48}$/.test(access)) fail('文件地址无效', 404);
         const record = await store.get('d_' + hash(access)); if (!record || record.expires < now()) fail('文件地址已过期，请刷新页面', 404);
-        const buffer = await store.read(record.file);
-        res.writeHead(200, { 'Content-Type': record.mime, 'Content-Length': buffer.length, 'Accept-Ranges': 'none', 'Cache-Control': 'private, max-age=300' }); return res.end(buffer);
+        const buffer = req.method === 'HEAD' ? null : await store.read(record.file);
+        const bytes = buffer?.length ?? record.bytes;
+        res.writeHead(200, { 'Content-Type': record.mime, ...(Number.isSafeInteger(bytes) && bytes >= 0 ? { 'Content-Length': bytes } : {}),
+          'Accept-Ranges': 'none', 'Cache-Control': 'private, max-age=300' });
+        return res.end(buffer ?? undefined);
       }
       if (url.pathname.startsWith('/spatial-media/')) {
         if (!['GET', 'HEAD'].includes(req.method)) fail('不支持的请求', 405);
